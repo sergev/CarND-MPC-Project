@@ -91,6 +91,10 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          std::cout << "px = " << px <<
+                     ", py = " << py <<
+                    ", psi = " << psi <<
+                      ", v = " << v << std::endl;
 
           /*
           * TODO: Calculate steering angle and throttle using MPC.
@@ -98,8 +102,8 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+          double steer_value = 0;
+          double throttle_value = 0;
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
