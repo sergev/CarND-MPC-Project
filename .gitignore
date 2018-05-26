@@ -1,5 +1,7 @@
 *.o
+*.trace
 src/mpc
+sergev/mpc
 zhujun98/mpc
 .vscode
 build

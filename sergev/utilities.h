@@ -18,19 +18,17 @@ inline double rad2deg(double x) { return x * 180 / pi(); }
 // @param s: input string
 //
 inline std::string hasData(std::string s) {
-  auto found_null = s.find("null");
-  auto b1 = s.find_first_of("[");
-  auto b2 = s.find_last_of("}]");
-  if (found_null != std::string::npos)
-  {
-    return "";
-  }
-  else if (b1 != std::string::npos && b2 != std::string::npos)
-  {
-    return s.substr(b1, b2 - b1 + 1);
-  }
+    auto found_null = s.find("null");
+    auto b1 = s.find_first_of("[");
+    auto b2 = s.find_last_of("}]");
 
-  return "";
+    if (found_null != std::string::npos) {
+        return "";
+    }
+    if (b1 != std::string::npos && b2 != std::string::npos) {
+        return s.substr(b1, b2 - b1 + 1);
+    }
+    return "";
 }
 
 //
@@ -45,14 +43,14 @@ inline std::string hasData(std::string s) {
 //
 template <class Vector, class T>
 inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt, T lf) {
-  Vector next_state(state.size());
+    Vector next_state(state.size());
 
-  next_state[0] = state[0] + state[3]*cos(state[2])*dt;
-  next_state[1] = state[1] + state[3]*sin(state[2])*dt;
-  next_state[2] = state[2] - state[3]/lf*actuator[0]*dt;
-  next_state[3] = state[3] + actuator[1]*dt;
+    next_state[0] = state[0] + state[3]*cos(state[2])*dt;
+    next_state[1] = state[1] + state[3]*sin(state[2])*dt;
+    next_state[2] = state[2] - state[3]/lf*actuator[0]*dt;
+    next_state[3] = state[3] + actuator[1]*dt;
 
-  return next_state;
+    return next_state;
 }
 
 //
@@ -66,13 +64,13 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt,
 //
 template <class T>
 inline T polyEval(Eigen::VectorXd a, T x) {
-  T result = 0.0;
+    T result = 0.0;
 
-  for (int i = 0; i < a.size(); ++i) {
-    result += a[i] * pow(x, i);
-  }
+    for (int i = 0; i < a.size(); ++i) {
+        result += a[i] * pow(x, i);
+    }
 
-  return result;
+    return result;
 }
 
 //
@@ -84,29 +82,29 @@ inline T polyEval(Eigen::VectorXd a, T x) {
 //
 inline Eigen::VectorXd leastSquareFit(const Eigen::VectorXd& xvals,
                                       const Eigen::VectorXd& yvals, int order) {
-  assert(xvals.size() == yvals.size());
-  assert(order >= 1 && order <= xvals.size() - 1);
+    assert(xvals.size() == yvals.size());
+    assert(order >= 1 && order <= xvals.size() - 1);
 
-  Eigen::MatrixXd A(xvals.size(), order + 1);
+    Eigen::MatrixXd A(xvals.size(), order + 1);
 
-  // assign the first column
-  for (int i = 0; i < xvals.size(); ++i) {
-    A(i, 0) = 1.0;
-  }
-
-  // assign the rest columns
-  for (int j = 0; j < xvals.size(); ++j) {
-    for (int i = 0; i < order; ++i) {
-      A(j, i+1) = A(j, i) * xvals[j];
+    // assign the first column
+    for (int i = 0; i < xvals.size(); ++i) {
+        A(i, 0) = 1.0;
     }
-  }
 
-  // solve the least square problem using QR decomposition
-  // Eigen::VectorXd result = A.householderQr().solve(yvals);  // fastest
-  Eigen::VectorXd result = A.colPivHouseholderQr().solve(yvals);
-  // Eigen::VectorXd result = A.fullPivHouseholderQr().solve(yvals);  // stablest
+    // assign the rest columns
+    for (int j = 0; j < xvals.size(); ++j) {
+        for (int i = 0; i < order; ++i) {
+            A(j, i+1) = A(j, i) * xvals[j];
+        }
+    }
 
-  return result;
+    // solve the least square problem using QR decomposition
+    // Eigen::VectorXd result = A.householderQr().solve(yvals);  // fastest
+    Eigen::VectorXd result = A.colPivHouseholderQr().solve(yvals);
+    // Eigen::VectorXd result = A.fullPivHouseholderQr().solve(yvals);  // stablest
+
+    return result;
 }
 
 //
@@ -118,18 +116,18 @@ inline Eigen::VectorXd leastSquareFit(const Eigen::VectorXd& xvals,
 //
 template <class Vector, class T>
 inline Vector globalToCar(T px, T py, T px0, T py0, T psi) {
-  Vector X_new(2);
+    Vector X_new(2);
 
-  T c = cos(psi);
-  T s = sin(psi);
-  T dx = px - px0;
-  T dy = py - py0;
+    T c = cos(psi);
+    T s = sin(psi);
+    T dx = px - px0;
+    T dy = py - py0;
 
-  // a rotation clock-wise about the origin
-  X_new[0] = dx*c + dy*s;
-  X_new[1] = -dx*s + dy*c;
+    // a rotation clock-wise about the origin
+    X_new[0] = dx*c + dy*s;
+    X_new[1] = -dx*s + dy*c;
 
-  return X_new;
+    return X_new;
 }
 
 #endif // MPC_UTILITIES_H
