@@ -10,15 +10,13 @@
 #include <thread>
 
 #include <uWS/uWS.h>
-
 #include <nlohmann/json.hpp>
+
 #include "mpc.h"
 #include "utilities.h"
 
-
 // for convenience
 using json = nlohmann::json;
-
 
 int main()
 {
@@ -33,23 +31,24 @@ int main()
   // mpc is initialized here!
   MPC mpc(latency, max_speed);
 
-  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                     uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
-    std::string sdata = std::string(data).substr(0, length);
-    // std::cout << sdata << std::endl;
+    string sdata = string(data).substr(0, length);
+    // cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
-      std::string s = hasData(sdata);
+      string s = hasData(sdata);
       if (s != "") {
         auto j = json::parse(s);
-        std::string event = j[0].get<std::string>();
+        string event = j[0].get<string>();
         if (event == "telemetry") {
           // j[1] is the data JSON object
 
           // global x/y positions of the waypoints
-          std::vector<double> ptsx = j[1]["ptsx"];
-          std::vector<double> ptsy = j[1]["ptsy"];
+          vector<double> ptsx = j[1]["ptsx"];
+          vector<double> ptsy = j[1]["ptsy"];
 
           // current global x/y positions of the vehicle in meter
           double px = j[1]["x"];
@@ -97,16 +96,16 @@ int main()
           msgJson["next_y"] = mpc.getRefy();
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          // std::cout << msg << std::endl;
+          // cout << msg << endl;
 
           int latency_in_ms = mpc.getLatency()*1000;  // convert s to ms
 
-          std::this_thread::sleep_for(std::chrono::milliseconds(latency_in_ms));
+          this_thread::sleep_for(chrono::milliseconds(latency_in_ms));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
         // Manual driving
-        std::string msg = "42[\"manual\",{}]";
+        string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
     }
@@ -117,9 +116,8 @@ int main()
   // doesn't compile :-(
   h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data,
                      size_t, size_t) {
-    const std::string s = "<h1>Hello world!</h1>";
-    if (req.getUrl().valueLength == 1)
-    {
+    const string s = "<h1>Hello world!</h1>";
+    if (req.getUrl().valueLength == 1) {
       res->end(s.data(), s.length());
     } else {
       // i guess this should be done more gracefully?
@@ -128,22 +126,21 @@ int main()
   });
 
   h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
-    std::cout << "Connected!!!" << std::endl;
+    cout << "Connected!!!" << endl;
   });
 
   h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code,
                          char *message, size_t length) {
     ws.close();
-    std::cout << "Disconnected" << std::endl;
+    cout << "Disconnected" << endl;
   });
 
   int port = 4567;
   if (h.listen(port)) {
-    std::cout << "Listening to port " << port << std::endl;
+    cout << "Listening to port " << port << endl;
   } else {
-    std::cerr << "Failed to listen to port" << std::endl;
+    cerr << "Failed to listen to port" << endl;
     return -1;
   }
-
   h.run();
 }
