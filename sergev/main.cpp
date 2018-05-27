@@ -80,8 +80,8 @@ int main()
                     trace << endl;
 
                     // search the optimized solution with given initial state
-                    Eigen::Vector4d state0 {px, py, psi, v};
-                    Eigen::Vector2d actuator0 {steering, throttle};
+                    Vector4d state0 {px, py, psi, v};
+                    Vector2d actuator0 {steering, throttle};
                     mpc.solve(state0, actuator0, ptsx, ptsy);
 
                     double steering_value = mpc.getSteering();

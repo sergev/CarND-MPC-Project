@@ -24,24 +24,6 @@ namespace {
     const double MAX_STEERING       = 25 * M_PI/180; // max 25 degrees
     const double MAX_THROTTLE       = 1.0;
 
-    //
-    // compute one actuator value after a certain time
-    // @param dt: time step
-    // @param p: coefficients used in calculation
-    //
-    template <class T, class Vector>
-    T compute_actuator(Vector p, T t, T max_abs_x) {
-        T result = p[0] + p[1]*t + p[2]*t*t + p[3]*t*t*t;
-
-        if ( result > max_abs_x ) {
-          result = max_abs_x;
-        } else if ( result < - max_abs_x) {
-          result = -max_abs_x;
-        }
-
-        return result;
-    };
-
     using CppAD::AD;
 
     class FG_eval {
@@ -54,9 +36,8 @@ namespace {
         //
         // @param state0: initial state [px, py, psi, v]
         // @param ref_p: coefficients of the polynomial fit for the reference trajectory
-        // @param max_speed: maximum speed of the vehicle
         //
-        FG_eval(Eigen::VectorXd state0, Eigen::VectorXd ref_poly) {
+        FG_eval(VectorXd state0, VectorXd ref_poly) {
             state0_ = state0;
             ref_poly_ = ref_poly;
         }
@@ -84,22 +65,18 @@ namespace {
             next_actuator[1] = x[1];    // throttle
 
             AD<double> cte = 0.0;  // current cross track error
-            AD<double> coe = 0.0;  // current orientation error
 
             AD<double> ss_cte = 0.0;  // sum of square of cross track error
-            AD<double> ss_coe = 0.0;  // sum of square of orientation error
             AD<double> ss_speed = 0.0;  // sum of square of speed
 
-            AD<double> max_speed = 0.0;
-            AD<double> min_speed = 200.0;
             AD<double> max_abs_cte = 0.0;
-            AD<double> max_abs_coe = 0.0;
 
             AD<double> x_last = 0.0;
             AD<double> y_last = 0.0;
 
             AD<double> dt = PRED_TIME_STEP;
             AD<double> t = 0;
+
             for (int i=0; i<N_STEP; ++i) {
                 t += dt;
 
@@ -110,47 +87,23 @@ namespace {
                 ADvector X_new = globalToCar<ADvector, AD<double>>(
                     next_state[0], next_state[1], px0, py0, psi);
 
-                // calculate the cross track error`
+                // calculate the cross track error
                 cte = X_new[1] - polyEval(ref_poly_, X_new[0]);
 
-                // calculate the orientation error
-                if (i > 0) {
-                    AD<double> dx = dt*next_state[3];
-                    AD<double> dy = polyEval(ref_poly_, X_new[0] + dx/2) -
-                                    polyEval(ref_poly_, X_new[0] - dx/2);
-                    AD<double> ref_orientation = CppAD::atan(dy/dx);
-
-                    AD<double> current_orientation = CppAD::atan(
-                        (X_new[1] - y_last)/(X_new[0] - x_last));
-
-                    x_last = X_new[0];
-                    y_last = X_new[1];
-
-                    coe = current_orientation - ref_orientation;
+                // update several parameters
+                if (abs(cte) > max_abs_cte) {
+                    max_abs_cte = abs(cte);
                 }
 
-                // update several parameters
-
-                if ( abs(cte) > max_abs_cte ) { max_abs_cte = abs(cte); }
-                if ( abs(coe) > max_abs_coe ) { max_abs_coe = abs(coe); }
-                if ( next_state[3] > max_speed ) { max_speed = next_state[3]; }
-                if ( next_state[3] < min_speed ) { min_speed = next_state[3]; }
-
                 // penalty functions
-
                 ss_speed += next_state[3]*next_state[3];
                 ss_cte += cte*cte;
-                ss_coe += coe*coe;
-
-                // use the coe in the second step to approximate the one in the first step
-                if ( i == 1 ) { ss_coe += coe*coe; }
             }
-            // objective function
-            std::cout << "ss_cte: " << ss_cte << " "
-                      << "ss coe: " << ss_coe << " "
-                      << "ss speed: " << ss_speed << std::endl;
+            cout << "ss_cte: " << ss_cte << " "
+                 << "ss speed: " << ss_speed << endl;
 
-            fg[0] += 0.002*ss_cte + ss_coe;
+            // objective function
+            fg[0] += 0.002*ss_cte;
 
             // speed control
             if (state0_[3] < MAX_SPEED) {
@@ -164,22 +117,21 @@ namespace {
 
     private:
 
-        Eigen::VectorXd state0_;  // initial state of the optimization
-        Eigen::VectorXd ref_poly_;  // coefficients of the polynomial fit for the reference trajectory
-
+        VectorXd state0_;   // initial state of the optimization
+        VectorXd ref_poly_; // coefficients of the polynomial fit for the reference trajectory
     };
 }
 
 // Implement MPC
 
 MPC::MPC() {
-    ref_poly_ = Eigen::VectorXd::Zero(POLY_ORDER + 1);
+    ref_poly_ = VectorXd::Zero(POLY_ORDER + 1);
 
-    ref_x_ = std::vector<double>(20);
-    ref_y_ = std::vector<double>(20);
+    ref_x_ = vector<double>(20);
+    ref_y_ = vector<double>(20);
 
-    pred_x_ = std::vector<double>(N_STEP);
-    pred_y_ = std::vector<double>(N_STEP);
+    pred_x_ = vector<double>(N_STEP);
+    pred_y_ = vector<double>(N_STEP);
 
     is_last_fit_success_ = true;
 }
@@ -193,19 +145,19 @@ double MPC::getSteering() { return steering_ / MAX_STEERING; }
 
 double MPC::getThrottle() { return throttle_; }
 
-std::vector<double> MPC::getRefx() { return ref_x_; }
+vector<double> MPC::getRefx() { return ref_x_; }
 
-std::vector<double> MPC::getRefy() { return ref_y_; }
+vector<double> MPC::getRefy() { return ref_y_; }
 
-std::vector<double> MPC::getPredx() { return pred_x_; }
+vector<double> MPC::getPredx() { return pred_x_; }
 
-std::vector<double> MPC::getPredy() { return pred_y_; }
+vector<double> MPC::getPredy() { return pred_y_; }
 
-void MPC::updatePred(const Eigen::VectorXd& state0) {
-    Eigen::VectorXd next_state(4);
+void MPC::updatePred(const VectorXd &state0) {
+    VectorXd next_state(4);
     for (unsigned i=0; i<next_state.size(); ++i) { next_state[i] = state0[i]; }
 
-    Eigen::VectorXd next_actuator(2);
+    VectorXd next_actuator(2);
     next_actuator[0] = steering_;
     next_actuator[1] = throttle_;
 
@@ -216,7 +168,7 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
         next_state = globalKinematic(next_state, next_actuator, dt);
 
         // transform from global coordinates system to car's coordinate system
-        std::vector<double> X_new = globalToCar<std::vector<double>, double>(
+        vector<double> X_new = globalToCar<vector<double>, double>(
             next_state[0], next_state[1], state0[0], state0[1], state0[2]);
 
         // assign reference trajectory for each step
@@ -225,21 +177,22 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
     }
 }
 
-void MPC::updateRef(const std::vector<double>& x, const std::vector<double>& y,
+void MPC::updateRef(const vector<double>& x, const vector<double>& y,
                     double px0, double py0, double psi) {
     assert(x.size() == y.size());
 
     size_t length0 = x.size();
 
-    Eigen::VectorXd ref_x(length0);
-    Eigen::VectorXd ref_y(length0);
+    VectorXd ref_x(length0);
+    VectorXd ref_y(length0);
 
     // 1. Fit the read out reference trajectory
 
     for (size_t i=0; i<x.size(); ++i) {
         // transform from global coordinates system to car's coordinate system
-        std::vector<double> X_new = globalToCar<std::vector<double>, double>(
+        vector<double> X_new = globalToCar<vector<double>, double>(
             x[i], y[i], px0, py0, psi);
+
         // store the reference trajectory in the car's coordinate system
         ref_x[i] = X_new[0];
         ref_y[i] = X_new[1];
@@ -260,8 +213,8 @@ void MPC::updateRef(const std::vector<double>& x, const std::vector<double>& y,
     }
 }
 
-bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
-                std::vector<double> ptsx, std::vector<double> ptsy)
+bool MPC::solve(VectorXd state0, VectorXd actuator0,
+                vector<double> ptsx, vector<double> ptsy)
 {
     //
     // update the reference trajectory
@@ -269,13 +222,12 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     // vector since the way points and vehicle state were measured at the same
     // time prior to the current time.
     //
-
     updateRef(ptsx, ptsy, state0[0], state0[1], state0[2]);
 
     //
     // estimate the current status to compensate the latency
     //
-    Eigen::VectorXd estimated_state0(4);
+    VectorXd estimated_state0(4);
     for (int i=0; i<state0.size(); ++i) { estimated_state0[i] = state0[i]; }
 
     estimated_state0 = globalKinematic(estimated_state0, actuator0, LATENCY);
@@ -317,7 +269,7 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     FG_eval fg_eval(estimated_state0, ref_poly_);
 
     // options for IPOPT solver
-    std::string options;
+    string options;
 
     options += "Integer print_level  0\n";
     // Setting sparse to true allows the solver to take advantage
@@ -332,8 +284,8 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     // solve the problem
     CppAD::ipopt::solve<Dvector, FG_eval>(options, xi, xl, xu, gl, gu, fg_eval, solution);
 
-    is_last_fit_success_ = true;
-    is_last_fit_success_ &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
+    is_last_fit_success_ = (solution.status ==
+                            CppAD::ipopt::solve_result<Dvector>::success);
 
     // Check some of the solution values
     //      possible values for the result status
@@ -354,22 +306,22 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     //           13: internal_error,
     //           14: unknown
     //      };
-
+#if 0
     // Print out the results
-    std::cout << "solution status: " << solution.status << std::endl;
-    std::cout << "Cost " << solution.obj_value << std::endl;
-    std::cout << "optimized variables: ";
+    cout << "solution status: " << solution.status << endl;
+    cout << "Cost " << solution.obj_value << endl;
+    cout << "optimized variables: ";
     for (unsigned i=0; i<solution.x.size(); ++i) {
-        std::cout << solution.x[i] << "  ";
+        cout << solution.x[i] << "  ";
     }
-    std::cout << std::endl;
+    cout << endl;
 
-    std::cout << "constraints: ";
+    cout << "constraints: ";
     for (unsigned i=0; i<solution.g.size(); ++i) {
-        std::cout << solution.g[i] << "  ";
+        cout << solution.g[i] << "  ";
     }
-    std::cout << std::endl;
-
+    cout << endl;
+#endif
     // assign the optimized values
     steering_ = solution.x[0];
     throttle_ = solution.x[1];

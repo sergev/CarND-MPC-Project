@@ -8,6 +8,7 @@
 #include <eigen3/Eigen/Dense>
 
 using namespace std;
+using namespace Eigen;
 
 class MPC {
 public:
@@ -26,8 +27,8 @@ public:
     // @param ptsx: x coordinates (global coordinates) in the reference trajectory
     // @param ptsy: y coordinates (global coordinates) in the reference trajectory
     //
-    bool solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
-               std::vector<double> ptsx, std::vector<double> ptsy);
+    bool solve(VectorXd state0, VectorXd actuator0,
+               vector<double> ptsx, vector<double> ptsy);
 
     // latency getter
     double getLatency();
@@ -39,26 +40,27 @@ public:
     double getThrottle();
 
     // ref_x getter
-    std::vector<double> getRefx();
+    vector<double> getRefx();
 
     // ref_y getter
-    std::vector<double> getRefy();
+    vector<double> getRefy();
 
     // pred_x getter
-    std::vector<double> getPredx();
+    vector<double> getPredx();
 
     // pred_y getter
-    std::vector<double> getPredy();
+    vector<double> getPredy();
 
 private:
 
-    std::vector<double> ref_x_;  // x coordinates of the reference trajectory
-    std::vector<double> ref_y_;  // y coordinates of the reference trajectory
+    vector<double> ref_x_;      // x coordinates of the reference trajectory
+    vector<double> ref_y_;      // y coordinates of the reference trajectory
 
-    std::vector<double> pred_x_;  // x coordinates of the predicted trajectory
-    std::vector<double> pred_y_;  // y coordinates of the predicted trajectory
+    vector<double> pred_x_;     // x coordinates of the predicted trajectory
+    vector<double> pred_y_;     // y coordinates of the predicted trajectory
 
-    Eigen::VectorXd ref_poly_;          // polynomial coefficients for the reference trajectory
+    VectorXd ref_poly_;         // polynomial coefficients for the reference trajectory
+
     double steering_;           // constant steering angle
     double throttle_;           // constant throttle
 
@@ -70,7 +72,7 @@ private:
     // @param state0: initial state of the car in [x, y, psi, v]
     // @param actuator: initial actuator values in [steering, throttle]
     //
-    void updatePred(const Eigen::VectorXd& state0);
+    void updatePred(const VectorXd &state0);
 
     //
     // update the polynomial coefficients of the reference trajectory as well as
@@ -82,7 +84,7 @@ private:
     // @param y0: y coordinate of the origin of the new coordinate system in the old one
     // @param psi: orientation of the new coordinate system with respect to the old one
     //
-    void updateRef(const std::vector<double>& x, const std::vector<double>& y,
+    void updateRef(const vector<double> &x, const vector<double> &y,
                    double x0, double y0, double psi);
 };
 
