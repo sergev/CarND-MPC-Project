@@ -80,21 +80,9 @@ namespace {
             ADvector next_state(4);
             for (size_t i=0; i<next_state.size(); ++i) { next_state[i] = state0_[i]; }
 
-            size_t steering_coeff_size = x.size()/2;
-            size_t throttle_coeff_size = x.size()/2;
-
-            ADvector steering_coeff(steering_coeff_size);
-            for (size_t j=0; j<steering_coeff_size; ++j) {
-                steering_coeff[j] = x[j];
-            }
-            ADvector throttle_coeff(throttle_coeff_size);
-            for (size_t j=0; j<throttle_coeff.size(); ++j){
-                throttle_coeff[j] = x[steering_coeff_size + j];
-            }
-
             ADvector next_actuator(2);
-            next_actuator[0] = steering_coeff[0];
-            next_actuator[1] = steering_coeff[1];
+            next_actuator[0] = x[0];    // steering angle
+            next_actuator[1] = x[1];    // throttle
 
             AD<double> cte = 0.0;  // current cross track error
             AD<double> coe = 0.0;  // current orientation error
@@ -165,10 +153,6 @@ namespace {
 
                 // use the coe in the second step to approximate the one in the first step
                 if ( i == 1 ) { ss_coe += coe*coe; }
-
-                // compute the next steering angle, we assume that the throttle is constant
-                next_actuator[0] = compute_actuator(steering_coeff, t, (AD<double>)MAX_STEERING);
-                next_actuator[1] = compute_actuator(throttle_coeff, t, (AD<double>)MAX_THROTTLE);
             }
             // objective function
             std::cout << "ss_cte: " << ss_cte << " "
@@ -206,9 +190,6 @@ MPC::MPC() {
     pred_x_ = std::vector<double>(N_STEP);
     pred_y_ = std::vector<double>(N_STEP);
 
-    steering_coeff_ = Eigen::VectorXd::Zero(4);
-    throttle_coeff_ = Eigen::VectorXd::Zero(4);
-
     is_last_fit_success_ = true;
 }
 
@@ -217,9 +198,9 @@ MPC::~MPC() {}
 double MPC::getLatency() { return LATENCY; }
 
 // the steering value should be normalized to [-1, 1]
-double MPC::getSteering() { return steering_coeff_[0] / MAX_STEERING; }
+double MPC::getSteering() { return steering_ / MAX_STEERING; }
 
-double MPC::getThrottle() { return throttle_coeff_[0]; }
+double MPC::getThrottle() { return throttle_; }
 
 std::vector<double> MPC::getRefx() { return ref_x_; }
 
@@ -234,8 +215,8 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
     for (unsigned i=0; i<next_state.size(); ++i) { next_state[i] = state0[i]; }
 
     Eigen::VectorXd next_actuator(2);
-    next_actuator[0] = steering_coeff_[0];
-    next_actuator[1] = throttle_coeff_[0];
+    next_actuator[0] = steering_;
+    next_actuator[1] = throttle_;
 
     double dt = PRED_TIME_STEP;  // set time step
     double t = 0;
@@ -257,10 +238,6 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
         // assign reference trajectory for each step
         pred_x_[i] = X_new[0];
         pred_y_[i] = X_new[1];
-
-        // computer the actuator in the next state
-        next_actuator[0] = compute_actuator(steering_coeff_, t, MAX_STEERING);
-        next_actuator[1] = compute_actuator(throttle_coeff_, t, MAX_THROTTLE);
     }
 }
 
@@ -328,42 +305,27 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     //
     // set up the optimizer
     //
-
     typedef CPPAD_TESTVECTOR(double) Dvector;
 
     // number of variables:
-    size_t nx = steering_coeff_.size() + throttle_coeff_.size();
-
+    size_t nx = 2;
     Dvector xi(nx), xl(nx), xu(nx);
+
     // initialize variables
-    if ( is_last_fit_success_ ) {
-        for (int i=0; i<steering_coeff_.size(); ++i) {
-            xi[i] = steering_coeff_[i];
-        }
-        for (int i=0; i<throttle_coeff_.size(); ++i) {
-            xi[steering_coeff_.size()+i] = throttle_coeff_[i];
-        }
+    if (is_last_fit_success_) {
+        xi[0] = steering_;
+        xi[1] = throttle_;
     } else {
-        for (unsigned i=0; i<nx; ++i) { xi[i] = 0; }
         xi[0] = actuator0[0];
-        xi[steering_coeff_.size()] = actuator0[1];
+        xi[1] = actuator0[1];
     }
 
     // set variable boundaries
-
     xl[0] = -MAX_STEERING; xu[0] = MAX_STEERING;
-    xl[1] = -0.1; xu[1] = 0.1;
-    xl[2] = -0.3; xu[2] = 0.3;
-    xl[3] = -0.3; xu[3] = 0.3;
-
-    xl[4] = 0; xu[4] = MAX_THROTTLE;
-    xl[5] = -0.2; xu[5] = 0.2;
-    xl[6] = 0; xu[6] = 0;
-    xl[7] = 0; xu[7] = 0;
+    xl[1] = 0;             xu[1] = MAX_THROTTLE;
 
     // number of constraints:
     size_t ng = 1;
-
     Dvector gl(ng), gu(ng);
 
     // set constraint boundaries
@@ -431,12 +393,8 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     std::cout << std::endl;
 
     // assign the optimized values
-    for (int i=0; i<steering_coeff_.size(); ++i) {
-        steering_coeff_[i] = solution.x[i];
-    }
-    for (int i=0; i<throttle_coeff_.size(); ++i) {
-        throttle_coeff_[i] = solution.x[steering_coeff_.size()+i];
-    }
+    steering_ = solution.x[0];
+    throttle_ = solution.x[1];
 
     // update the predicted trajectory
     updatePred(estimated_state0);

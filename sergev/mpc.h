@@ -59,8 +59,8 @@ private:
     std::vector<double> pred_y_;  // y coordinates of the predicted trajectory
 
     Eigen::VectorXd ref_poly_;          // polynomial coefficients for the reference trajectory
-    Eigen::VectorXd steering_coeff_;    // coefficients for predicting steering angle over time
-    Eigen::VectorXd throttle_coeff_;    // coefficients for predicting throttle over time
+    double steering_;           // constant steering angle
+    double throttle_;           // constant throttle
 
     bool is_last_fit_success_;  // an indicator for the success of last fit
 
