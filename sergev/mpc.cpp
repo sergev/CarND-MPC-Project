@@ -21,7 +21,6 @@ namespace {
     // time step should be long enough to make the system be able to response timely
     const double PRED_TIME_STEP     = 0.2;      // prediction time step in seconds
     const int    N_STEP             = 8;        // number of prediction steps
-    const double TRACKING_TIME_STEP = 0.01;     // tracking time step in seconds
     const double MAX_STEERING       = 25 * M_PI/180; // max 25 degrees
     const double MAX_THROTTLE       = 1.0;
 
@@ -104,16 +103,8 @@ namespace {
             for (int i=0; i<N_STEP; ++i) {
                 t += dt;
 
-                // computer the next state
-                // in each dt, the tracking is further divided into many sub-steps with
-                // size TRACKING_TIME_STEP
-                AD<double> sub_t = 0.0;
-                while ( sub_t < dt - TRACKING_TIME_STEP ) {
-                    sub_t += TRACKING_TIME_STEP;
-                    next_state = globalKinematic(
-                        next_state, next_actuator, (AD<double>)TRACKING_TIME_STEP);
-                }
-                next_state = globalKinematic(next_state, next_actuator, dt - sub_t);
+                // compute the next state
+                next_state = globalKinematic(next_state, next_actuator, dt);
 
                 // transform from global coordinates system to car's coordinate system
                 ADvector X_new = globalToCar<ADvector, AD<double>>(
@@ -222,14 +213,7 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
     double t = 0;
     for (int i=0; i<N_STEP; ++i) {
         t += dt;
-
-        double sub_t = 0.0;
-        while ( sub_t < dt - TRACKING_TIME_STEP ) {
-            sub_t += TRACKING_TIME_STEP;
-            next_state = globalKinematic(
-                next_state, next_actuator, TRACKING_TIME_STEP);
-        }
-        next_state = globalKinematic(next_state, next_actuator, dt - sub_t);
+        next_state = globalKinematic(next_state, next_actuator, dt);
 
         // transform from global coordinates system to car's coordinate system
         std::vector<double> X_new = globalToCar<std::vector<double>, double>(
@@ -294,13 +278,7 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     Eigen::VectorXd estimated_state0(4);
     for (int i=0; i<state0.size(); ++i) { estimated_state0[i] = state0[i]; }
 
-    double sub_t = 0.0;
-    while ( sub_t < LATENCY - TRACKING_TIME_STEP ) {
-        sub_t += TRACKING_TIME_STEP;
-        estimated_state0 = globalKinematic(
-            estimated_state0, actuator0, TRACKING_TIME_STEP);
-    }
-    estimated_state0 = globalKinematic(estimated_state0, actuator0, LATENCY - sub_t);
+    estimated_state0 = globalKinematic(estimated_state0, actuator0, LATENCY);
 
     //
     // set up the optimizer
