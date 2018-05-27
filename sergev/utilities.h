@@ -44,11 +44,17 @@ inline std::string hasData(std::string s) {
 template <class Vector, class T>
 inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt, T lf) {
     Vector next_state(state.size());
+    auto px  = state[0];
+    auto py  = state[1];
+    auto psi = state[2];
+    auto v   = state[3];
+    auto steering = actuator[0];
+    auto throttle = actuator[1];
 
-    next_state[0] = state[0] + state[3]*cos(state[2])*dt;
-    next_state[1] = state[1] + state[3]*sin(state[2])*dt;
-    next_state[2] = state[2] - state[3]/lf*actuator[0]*dt;
-    next_state[3] = state[3] + actuator[1]*dt;
+    next_state[0] = px  + (v * cos(psi) * dt);
+    next_state[1] = py  + (v * sin(psi) * dt);
+    next_state[2] = psi - (v * steering/lf * dt);
+    next_state[3] = v   + (throttle * dt);
 
     return next_state;
 }

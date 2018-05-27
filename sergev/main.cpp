@@ -93,6 +93,7 @@ int main()
                     // the steering value should be normalized to [-1, 1] by dividing deg2rad(25)
                     double steering_value = mpc.getSteering()/deg2rad(25);
                     double throttle_value = mpc.getThrottle();
+//throttle_value = 0.2;
 
                     // print output data
                     trace << "    steering = " << steering_value <<

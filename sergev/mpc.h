@@ -55,7 +55,7 @@ private:
     double lf_;  // distance between the front wheel and the vehicle center
 
     int order_;  // order of the polynomial fit
-    Eigen::VectorXd ref_p_;  // polynomial coefficients for the reference trajectory
+    Eigen::VectorXd ref_poly_;  // polynomial coefficients for the reference trajectory
     std::vector<double> ref_x_;  // x coordinates of the reference trajectory
     std::vector<double> ref_y_;  // y coordinates of the reference trajectory
 

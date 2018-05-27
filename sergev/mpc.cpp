@@ -55,10 +55,10 @@ namespace {
         // @param n_step: number of prediction steps
         // @param lf: distance between the front wheel and the vehicle center
         //
-        FG_eval(Eigen::VectorXd state0, Eigen::VectorXd ref_p, double max_time,
-                double max_speed, int n_step,double lf) {
+        FG_eval(Eigen::VectorXd state0, Eigen::VectorXd ref_poly, double max_time,
+                double max_speed, int n_step, double lf) {
             state0_ = state0;
-            ref_p_ = ref_p;
+            ref_poly_ = ref_poly;
             max_time_ = max_time;
             max_speed_ = max_speed;
             n_step_ = n_step;
@@ -135,12 +135,13 @@ namespace {
                     next_state[0], next_state[1], px0, py0, psi);
 
                 // calculate the cross track error`
-                cte = X_new[1] - polyEval(ref_p_, X_new[0]);
+                cte = X_new[1] - polyEval(ref_poly_, X_new[0]);
 
                 // calculate the orientation error
                 if (i > 0) {
                     AD<double> dx = dt*next_state[3];
-                    AD<double> dy = polyEval(ref_p_, X_new[0] + dx/2) - polyEval(ref_p_, X_new[0] - dx/2);
+                    AD<double> dy = polyEval(ref_poly_, X_new[0] + dx/2) -
+                                    polyEval(ref_poly_, X_new[0] - dx/2);
                     AD<double> ref_orientation = CppAD::atan(dy/dx);
 
                     AD<double> current_orientation = CppAD::atan(
@@ -192,7 +193,7 @@ namespace {
     private:
 
         Eigen::VectorXd state0_;  // initial state of the optimization
-        Eigen::VectorXd ref_p_;  // coefficients of the polynomial fit for the reference trajectory
+        Eigen::VectorXd ref_poly_;  // coefficients of the polynomial fit for the reference trajectory
 
         double max_time_;  // maximum time of prediction in seconds
         double max_speed_;  // maximum speed of the vehicle
@@ -216,7 +217,7 @@ MPC::MPC(double latency, double max_speed) {
     lf_ = 2.67;
 
     order_ = 3;
-    ref_p_ = Eigen::VectorXd::Zero(order_+1);
+    ref_poly_ = Eigen::VectorXd::Zero(order_+1);
 
     ref_x_ = std::vector<double>(20);
     ref_y_ = std::vector<double>(20);
@@ -311,7 +312,7 @@ void MPC::updateRef(const std::vector<double>& x, const std::vector<double>& y,
     }
 
     // polynomial fit of the reference trajectory
-    ref_p_ = leastSquareFit(ref_x, ref_y, order_);
+    ref_poly_ = leastSquareFit(ref_x, ref_y, order_);
 
     // 2. Generate a finer reference trajectory
 
@@ -321,7 +322,7 @@ void MPC::updateRef(const std::vector<double>& x, const std::vector<double>& y,
 
     for (int i=0; i<ref_length; ++i) {
         ref_x_[i] = x_step*i;
-        ref_y_[i] = polyEval(ref_p_, ref_x_[i]);
+        ref_y_[i] = polyEval(ref_poly_, ref_x_[i]);
     }
 }
 
@@ -400,7 +401,7 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     gu[0] = 2.0;
 
     // object that computes objective and constraints
-    FG_eval fg_eval(estimated_state0, ref_p_, max_time_, max_speed_, (int)pred_x_.size(), lf_);
+    FG_eval fg_eval(estimated_state0, ref_poly_, max_time_, max_speed_, (int)pred_x_.size(), lf_);
 
     // options for IPOPT solver
     std::string options;
