@@ -37,9 +37,10 @@ namespace {
         // @param state0: initial state [px, py, psi, v]
         // @param ref_p: coefficients of the polynomial fit for the reference trajectory
         //
-        FG_eval(VectorXd state0, VectorXd ref_poly) {
+        FG_eval(VectorXd state0, vector<double> ref_x, vector<double> ref_y) {
             state0_ = state0;
-            ref_poly_ = ref_poly;
+            ref_x_ = ref_x;
+            ref_y_ = ref_y;
         }
 
         //
@@ -64,31 +65,24 @@ namespace {
             next_actuator[0] = x[0];    // steering angle
             next_actuator[1] = x[1];    // throttle
 
-            AD<double> cte = 0.0;  // current cross track error
-
-            AD<double> ss_cte = 0.0;  // sum of square of cross track error
-            AD<double> ss_speed = 0.0;  // sum of square of speed
-
+            AD<double> cte;                 // current cross track error
+            AD<double> ss_cte      = 0.0;   // sum of square of cross track error
+            AD<double> ss_speed    = 0.0;   // sum of square of speed
             AD<double> max_abs_cte = 0.0;
-
-            AD<double> x_last = 0.0;
-            AD<double> y_last = 0.0;
-
-            AD<double> dt = PRED_TIME_STEP;
-            AD<double> t = 0;
+            AD<double> t           = 0;
 
             for (int i=0; i<N_STEP; ++i) {
-                t += dt;
+                t += PRED_TIME_STEP;
 
                 // compute the next state
-                next_state = globalKinematic(next_state, next_actuator, dt);
+                next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
 
                 // transform from global coordinates system to car's coordinate system
-                ADvector X_new = globalToCar<ADvector, AD<double>>(
+                ADvector xy = globalToCar<ADvector, AD<double>>(
                     next_state[0], next_state[1], px0, py0, psi);
 
                 // calculate the cross track error
-                cte = X_new[1] - polyEval(ref_poly_, X_new[0]);
+                cte = distanceToRefTrajectory(xy[0], xy[1]);
 
                 // update several parameters
                 if (abs(cte) > max_abs_cte) {
@@ -96,14 +90,15 @@ namespace {
                 }
 
                 // penalty functions
-                ss_speed += next_state[3]*next_state[3];
-                ss_cte += cte*cte;
+                ss_speed += next_state[3] * next_state[3];
+                ss_cte += cte * cte;
             }
+#if 0
             cout << "ss_cte: " << ss_cte << " "
                  << "ss speed: " << ss_speed << endl;
-
+#endif
             // objective function
-            fg[0] += 0.002*ss_cte;
+            fg[0] += 0.002 * ss_cte;
 
             // speed control
             if (state0_[3] < MAX_SPEED) {
@@ -117,19 +112,25 @@ namespace {
 
     private:
 
-        VectorXd state0_;   // initial state of the optimization
-        VectorXd ref_poly_; // coefficients of the polynomial fit for the reference trajectory
+        VectorXd       state0_; // initial state of the optimization
+        vector<double> ref_x_;  // reference trajectory
+        vector<double> ref_y_;
+
+        //
+        // Compute minimal distance from a dot to a reference trajectory
+        //
+        AD<double> distanceToRefTrajectory(AD<double> x, AD<double> y) {
+            //TODO:
+            // abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2*y1 - y2*x1) /
+            //     sqrt((y2 - y1)^2 + (x2 - x1)^2))
+            return 1;
+        }
     };
 }
 
 // Implement MPC
 
 MPC::MPC() {
-    ref_poly_ = VectorXd::Zero(POLY_ORDER + 1);
-
-    ref_x_ = vector<double>(20);
-    ref_y_ = vector<double>(20);
-
     pred_x_ = vector<double>(N_STEP);
     pred_y_ = vector<double>(N_STEP);
 
@@ -161,19 +162,18 @@ void MPC::updatePred(const VectorXd &state0) {
     next_actuator[0] = steering_;
     next_actuator[1] = throttle_;
 
-    double dt = PRED_TIME_STEP;  // set time step
     double t = 0;
     for (int i=0; i<N_STEP; ++i) {
-        t += dt;
-        next_state = globalKinematic(next_state, next_actuator, dt);
+        t += PRED_TIME_STEP;
+        next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
 
         // transform from global coordinates system to car's coordinate system
-        vector<double> X_new = globalToCar<vector<double>, double>(
+        vector<double> xy = globalToCar<vector<double>, double>(
             next_state[0], next_state[1], state0[0], state0[1], state0[2]);
 
         // assign reference trajectory for each step
-        pred_x_[i] = X_new[0];
-        pred_y_[i] = X_new[1];
+        pred_x_[i] = xy[0];
+        pred_y_[i] = xy[1];
     }
 }
 
@@ -181,35 +181,21 @@ void MPC::updateRef(const vector<double>& x, const vector<double>& y,
                     double px0, double py0, double psi) {
     assert(x.size() == y.size());
 
-    size_t length0 = x.size();
+    unsigned ref_length = x.size();
 
-    VectorXd ref_x(length0);
-    VectorXd ref_y(length0);
+    // allocate vectors
+    ref_x_.resize(ref_length);
+    ref_y_.resize(ref_length);
 
-    // 1. Fit the read out reference trajectory
+    // transform from global coordinates system to car's coordinate system
+    for (unsigned i=0; i<ref_length; ++i) {
 
-    for (size_t i=0; i<x.size(); ++i) {
-        // transform from global coordinates system to car's coordinate system
-        vector<double> X_new = globalToCar<vector<double>, double>(
+        vector<double> xy = globalToCar<vector<double>, double>(
             x[i], y[i], px0, py0, psi);
 
         // store the reference trajectory in the car's coordinate system
-        ref_x[i] = X_new[0];
-        ref_y[i] = X_new[1];
-    }
-
-    // polynomial fit of the reference trajectory
-    ref_poly_ = leastSquareFit(ref_x, ref_y, POLY_ORDER);
-
-    // 2. Generate a finer reference trajectory
-
-    double x_max = ref_x[ref_x.size() - 1];
-    long ref_length = ref_x_.size();
-    double x_step = x_max / ref_length;
-
-    for (int i=0; i<ref_length; ++i) {
-        ref_x_[i] = x_step*i;
-        ref_y_[i] = polyEval(ref_poly_, ref_x_[i]);
+        ref_x_[i] = xy[0];
+        ref_y_[i] = xy[1];
     }
 }
 
@@ -266,7 +252,7 @@ bool MPC::solve(VectorXd state0, VectorXd actuator0,
     gu[0] = 2.0;
 
     // object that computes objective and constraints
-    FG_eval fg_eval(estimated_state0, ref_poly_);
+    FG_eval fg_eval(estimated_state0, ref_x_, ref_y_);
 
     // options for IPOPT solver
     string options;

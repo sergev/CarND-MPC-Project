@@ -73,60 +73,6 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
 }
 
 //
-// evaluate a polynomial function
-// a[0] + a[1]x + a[2]x^2 + ... + a[n-1]x^(n-1)
-//
-// @param a: coefficients of the polynomial
-// @param x: variable
-//
-// @return result: evaluation of the polynomial function
-//
-template <class T>
-inline T polyEval(Eigen::VectorXd a, T x) {
-    T result = 0.0;
-
-    for (int i = 0; i < a.size(); ++i) {
-        result += a[i] * pow(x, i);
-    }
-
-    return result;
-}
-
-//
-// solve a least square problem
-//
-// @param xvals: vector of x variables
-// @param yvals: vector of y variables
-// @param order: order of the polynomial fit
-//
-inline Eigen::VectorXd leastSquareFit(const Eigen::VectorXd& xvals,
-                                      const Eigen::VectorXd& yvals, int order) {
-    assert(xvals.size() == yvals.size());
-    assert(order >= 1 && order <= xvals.size() - 1);
-
-    Eigen::MatrixXd A(xvals.size(), order + 1);
-
-    // assign the first column
-    for (int i = 0; i < xvals.size(); ++i) {
-        A(i, 0) = 1.0;
-    }
-
-    // assign the rest columns
-    for (int j = 0; j < xvals.size(); ++j) {
-        for (int i = 0; i < order; ++i) {
-            A(j, i+1) = A(j, i) * xvals[j];
-        }
-    }
-
-    // solve the least square problem using QR decomposition
-    // Eigen::VectorXd result = A.householderQr().solve(yvals);  // fastest
-    Eigen::VectorXd result = A.colPivHouseholderQr().solve(yvals);
-    // Eigen::VectorXd result = A.fullPivHouseholderQr().solve(yvals);  // stablest
-
-    return result;
-}
-
-//
 // transform coordinate from one coordinate system to the other
 //
 // @param X: coordinates (x, y) in the old coordinate system to be transformed
