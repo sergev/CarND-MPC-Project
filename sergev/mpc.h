@@ -13,7 +13,7 @@ class MPC {
 public:
 
     // constructor
-    MPC(double latency, double max_speed);
+    MPC();
 
     // destructor
     virtual ~MPC();
@@ -52,25 +52,15 @@ public:
 
 private:
 
-    double lf_;  // distance between the front wheel and the vehicle center
-
-    int order_;  // order of the polynomial fit
-    Eigen::VectorXd ref_poly_;  // polynomial coefficients for the reference trajectory
     std::vector<double> ref_x_;  // x coordinates of the reference trajectory
     std::vector<double> ref_y_;  // y coordinates of the reference trajectory
 
     std::vector<double> pred_x_;  // x coordinates of the predicted trajectory
     std::vector<double> pred_y_;  // y coordinates of the predicted trajectory
 
-    double max_time_;  // maximum time of prediction in seconds
-    double max_speed_;  // maximum speed in MPH
-
-    // coefficients for predicting steering angle over time
-    Eigen::VectorXd steering_coeff_;
-    // coefficients for predicting throttle over time
-    Eigen::VectorXd throttle_coeff_;
-
-    double latency_;  // latency of the data acquisition system
+    Eigen::VectorXd ref_poly_;          // polynomial coefficients for the reference trajectory
+    Eigen::VectorXd steering_coeff_;    // coefficients for predicting steering angle over time
+    Eigen::VectorXd throttle_coeff_;    // coefficients for predicting throttle over time
 
     bool is_last_fit_success_;  // an indicator for the success of last fit
 

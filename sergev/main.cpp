@@ -23,14 +23,8 @@ int main()
 {
     uWS::Hub h;
 
-    // Latency (in seconds)
-    double latency = 0.1;
-
-    // max speed
-    double max_speed = 60;
-
     // mpc is initialized here!
-    MPC mpc(latency, max_speed);
+    MPC mpc;
 
     unsigned step = 0;
     ofstream trace;
@@ -90,8 +84,7 @@ int main()
                     Eigen::Vector2d actuator0 {steering, throttle};
                     mpc.solve(state0, actuator0, ptsx, ptsy);
 
-                    // the steering value should be normalized to [-1, 1] by dividing deg2rad(25)
-                    double steering_value = mpc.getSteering()/deg2rad(25);
+                    double steering_value = mpc.getSteering();
                     double throttle_value = mpc.getThrottle();
 //throttle_value = 0.2;
 

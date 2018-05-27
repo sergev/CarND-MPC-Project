@@ -14,11 +14,16 @@
 #include "utilities.h"
 
 namespace {
+    const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
+    const double MAX_SPEED  = 60;       // maximum speed, miles per hour
+    const int    POLY_ORDER = 3;        // order of the polynomial fit
+
     // time step should be long enough to make the system be able to response timely
-    const double PRED_TIME_STEP = 0.2;  // prediction time step in seconds
-    const double TRACKING_TIME_STEP = 0.01;  // tracking time step in seconds
-    const double MAX_STEERING = deg2rad(25);
-    const double MAX_THROTTLE = 1.0;
+    const double PRED_TIME_STEP     = 0.2;      // prediction time step in seconds
+    const int    N_STEP             = 8;        // number of prediction steps
+    const double TRACKING_TIME_STEP = 0.01;     // tracking time step in seconds
+    const double MAX_STEERING       = 25 * M_PI/180; // max 25 degrees
+    const double MAX_THROTTLE       = 1.0;
 
     //
     // compute one actuator value after a certain time
@@ -50,19 +55,11 @@ namespace {
         //
         // @param state0: initial state [px, py, psi, v]
         // @param ref_p: coefficients of the polynomial fit for the reference trajectory
-        // @param max_time: maximum time in one prediction (s)
         // @param max_speed: maximum speed of the vehicle
-        // @param n_step: number of prediction steps
-        // @param lf: distance between the front wheel and the vehicle center
         //
-        FG_eval(Eigen::VectorXd state0, Eigen::VectorXd ref_poly, double max_time,
-                double max_speed, int n_step, double lf) {
+        FG_eval(Eigen::VectorXd state0, Eigen::VectorXd ref_poly) {
             state0_ = state0;
             ref_poly_ = ref_poly;
-            max_time_ = max_time;
-            max_speed_ = max_speed;
-            n_step_ = n_step;
-            lf_ = lf;
         }
 
         //
@@ -114,9 +111,9 @@ namespace {
             AD<double> x_last = 0.0;
             AD<double> y_last = 0.0;
 
-            AD<double> dt = max_time_/n_step_;
+            AD<double> dt = PRED_TIME_STEP;
             AD<double> t = 0;
-            for (int i=0; i<n_step_; ++i) {
+            for (int i=0; i<N_STEP; ++i) {
                 t += dt;
 
                 // computer the next state
@@ -126,9 +123,9 @@ namespace {
                 while ( sub_t < dt - TRACKING_TIME_STEP ) {
                     sub_t += TRACKING_TIME_STEP;
                     next_state = globalKinematic(
-                        next_state, next_actuator, (AD<double>)TRACKING_TIME_STEP, lf_);
+                        next_state, next_actuator, (AD<double>)TRACKING_TIME_STEP);
                 }
-                next_state = globalKinematic(next_state, next_actuator, dt - sub_t, lf_);
+                next_state = globalKinematic(next_state, next_actuator, dt - sub_t);
 
                 // transform from global coordinates system to car's coordinate system
                 ADvector X_new = globalToCar<ADvector, AD<double>>(
@@ -179,14 +176,14 @@ namespace {
                       << "ss speed: " << ss_speed << std::endl;
 
             fg[0] += 0.002*ss_cte + ss_coe;
+
             // speed control
-            if ( state0_[3] < max_speed_ ) {
-                fg[0] -= (max_speed_ - state0_[3])*1e-6*ss_speed;
+            if (state0_[3] < MAX_SPEED) {
+                fg[0] -= (MAX_SPEED - state0_[3]) * 1e-6 * ss_speed;
             }
 
             // constraint functions
             fg[1] = max_abs_cte;
-
             return;
         }
 
@@ -195,42 +192,19 @@ namespace {
         Eigen::VectorXd state0_;  // initial state of the optimization
         Eigen::VectorXd ref_poly_;  // coefficients of the polynomial fit for the reference trajectory
 
-        double max_time_;  // maximum time of prediction in seconds
-        double max_speed_;  // maximum speed of the vehicle
-        int n_step_;  // number of prediction steps
-
-        AD<double> lf_;  // distance between the front wheel and the vehicle center
     };
 }
 
 // Implement MPC
 
-MPC::MPC(double latency, double max_speed) {
-    // This value was obtained by measuring the radius formed by running the vehicle in the
-    // simulator around in a circle with a constant steering angle and velocity on a
-    // flat terrain.
-    //
-    // Lf was tuned until the radius formed by the simulating the model
-    // presented in the classroom matched the previous radius.
-    //
-    // This is the length from front to CoG that has a similar radius.
-    lf_ = 2.67;
-
-    order_ = 3;
-    ref_poly_ = Eigen::VectorXd::Zero(order_+1);
+MPC::MPC() {
+    ref_poly_ = Eigen::VectorXd::Zero(POLY_ORDER + 1);
 
     ref_x_ = std::vector<double>(20);
     ref_y_ = std::vector<double>(20);
 
-    max_speed_ = max_speed;
-
-    latency_ = latency;
-
-    unsigned long n_step = 8;
-    max_time_ = 8*PRED_TIME_STEP;
-
-    pred_x_ = std::vector<double>(n_step);
-    pred_y_ = std::vector<double>(n_step);
+    pred_x_ = std::vector<double>(N_STEP);
+    pred_y_ = std::vector<double>(N_STEP);
 
     steering_coeff_ = Eigen::VectorXd::Zero(4);
     throttle_coeff_ = Eigen::VectorXd::Zero(4);
@@ -240,9 +214,10 @@ MPC::MPC(double latency, double max_speed) {
 
 MPC::~MPC() {}
 
-double MPC::getLatency() { return latency_; }
+double MPC::getLatency() { return LATENCY; }
 
-double MPC::getSteering() { return steering_coeff_[0]; }
+// the steering value should be normalized to [-1, 1]
+double MPC::getSteering() { return steering_coeff_[0] / MAX_STEERING; }
 
 double MPC::getThrottle() { return throttle_coeff_[0]; }
 
@@ -262,19 +237,18 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
     next_actuator[0] = steering_coeff_[0];
     next_actuator[1] = throttle_coeff_[0];
 
-    long n_step = pred_x_.size();
-    double dt = max_time_/n_step;  // set time step
+    double dt = PRED_TIME_STEP;  // set time step
     double t = 0;
-    for (int i=0; i<n_step; ++i) {
+    for (int i=0; i<N_STEP; ++i) {
         t += dt;
 
         double sub_t = 0.0;
         while ( sub_t < dt - TRACKING_TIME_STEP ) {
             sub_t += TRACKING_TIME_STEP;
             next_state = globalKinematic(
-                next_state, next_actuator, TRACKING_TIME_STEP, lf_);
+                next_state, next_actuator, TRACKING_TIME_STEP);
         }
-        next_state = globalKinematic(next_state, next_actuator, dt - sub_t, lf_);
+        next_state = globalKinematic(next_state, next_actuator, dt - sub_t);
 
         // transform from global coordinates system to car's coordinate system
         std::vector<double> X_new = globalToCar<std::vector<double>, double>(
@@ -288,7 +262,6 @@ void MPC::updatePred(const Eigen::VectorXd& state0) {
         next_actuator[0] = compute_actuator(steering_coeff_, t, MAX_STEERING);
         next_actuator[1] = compute_actuator(throttle_coeff_, t, MAX_THROTTLE);
     }
-
 }
 
 void MPC::updateRef(const std::vector<double>& x, const std::vector<double>& y,
@@ -312,7 +285,7 @@ void MPC::updateRef(const std::vector<double>& x, const std::vector<double>& y,
     }
 
     // polynomial fit of the reference trajectory
-    ref_poly_ = leastSquareFit(ref_x, ref_y, order_);
+    ref_poly_ = leastSquareFit(ref_x, ref_y, POLY_ORDER);
 
     // 2. Generate a finer reference trajectory
 
@@ -345,12 +318,12 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     for (int i=0; i<state0.size(); ++i) { estimated_state0[i] = state0[i]; }
 
     double sub_t = 0.0;
-    while ( sub_t < latency_ - TRACKING_TIME_STEP ) {
+    while ( sub_t < LATENCY - TRACKING_TIME_STEP ) {
         sub_t += TRACKING_TIME_STEP;
         estimated_state0 = globalKinematic(
-            estimated_state0, actuator0, TRACKING_TIME_STEP, lf_);
+            estimated_state0, actuator0, TRACKING_TIME_STEP);
     }
-    estimated_state0 = globalKinematic(estimated_state0, actuator0, latency_ - sub_t, lf_);
+    estimated_state0 = globalKinematic(estimated_state0, actuator0, LATENCY - sub_t);
 
     //
     // set up the optimizer
@@ -401,7 +374,7 @@ bool MPC::solve(Eigen::VectorXd state0, Eigen::VectorXd actuator0,
     gu[0] = 2.0;
 
     // object that computes objective and constraints
-    FG_eval fg_eval(estimated_state0, ref_poly_, max_time_, max_speed_, (int)pred_x_.size(), lf_);
+    FG_eval fg_eval(estimated_state0, ref_poly_);
 
     // options for IPOPT solver
     std::string options;

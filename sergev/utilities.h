@@ -5,11 +5,6 @@
 #ifndef MPC_UTILITIES_H
 #define MPC_UTILITIES_H
 
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-inline double deg2rad(double x) { return x * pi() / 180; }
-inline double rad2deg(double x) { return x * 180 / pi(); }
-
 //
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -37,24 +32,42 @@ inline std::string hasData(std::string s) {
 // @param state: state of the car in [x, y, psi, v]
 // @param actuator: actuator values in [steering, throttle]
 // @param dt: time step (s)
-// @param lf: distance between the front wheel and the vehicle center
 //
 // @return next_state: state of the car after time dt
 //
 template <class Vector, class T>
-inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt, T lf) {
-    Vector next_state(state.size());
-    auto px  = state[0];
-    auto py  = state[1];
-    auto psi = state[2];
-    auto v   = state[3];
+inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt) {
+
+    // distance between the front wheel and the vehicle center
+    // This value was obtained by measuring the radius formed by running the vehicle in the
+    // simulator around in a circle with a constant steering angle and velocity on a
+    // flat terrain.
+    //
+    // Lf was tuned until the radius formed by the simulating the model
+    // presented in the classroom matched the previous radius.
+    //
+    // This is the length from front to CoG that has a similar radius.
+    const double LF = 2.67;
+
+    // Acceleration in meters per sec^2 at maximum throttle.
+    const double MAX_ACCEL = 3.0; //TODO
+
+    // Conversion from MPH to meters per second.
+    const double MPH_TO_METERS_PER_SEC = 0.44704;
+    const double METERS_PER_SEC_TO_MPH = 2.23694;
+
+    auto px       = state[0];
+    auto py       = state[1];
+    auto psi      = state[2];
+    auto v        = state[3] * MPH_TO_METERS_PER_SEC;
     auto steering = actuator[0];
     auto throttle = actuator[1];
 
+    Vector next_state(state.size());
     next_state[0] = px  + (v * cos(psi) * dt);
     next_state[1] = py  + (v * sin(psi) * dt);
-    next_state[2] = psi - (v * steering/lf * dt);
-    next_state[3] = v   + (throttle * dt);
+    next_state[2] = psi - (v * steering/LF * dt);
+    next_state[3] = (v + (throttle * MAX_ACCEL * dt)) * METERS_PER_SEC_TO_MPH;
 
     return next_state;
 }
