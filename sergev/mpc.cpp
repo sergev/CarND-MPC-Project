@@ -1,11 +1,6 @@
 //
 // Model predictive controller
 //
-// TODO: How to handle evil fit?
-// TODO: Why the fit is prone to become evil when the PRED_TIME_STEP becomes small
-//
-#include <iostream>
-
 #define HAVE_CSTDDEF
 #include <cppad/cppad.hpp>
 #include <cppad/ipopt/solve.hpp>
@@ -167,14 +162,14 @@ public:
         }
 #if 0
         cout << "ss_cte: " << ss_cte << " "
-             << "ss speed: " << ss_speed << endl;
+           << "ss speed: " << ss_speed << endl;
 #endif
         // objective function
-        objectives[0] += 0.002 * ss_cte;
+        objectives[0] += ss_cte;
 
         // speed control
         if (state0_[3] < MAX_SPEED) {
-            objectives[0] -= (MAX_SPEED - state0_[3]) * 1e-6 * ss_speed;
+            objectives[0] -= (MAX_SPEED - state0_[3]) * 1e-3 * ss_speed;
         }
 
         // constraint functions
@@ -189,13 +184,58 @@ private:
     vector<double> ref_y_;
 
     //
-    // Compute minimal distance from a dot to a reference trajectory
+    // Compute distance from a point to a line segment
+    //
+    AD<double> distanceToLineSegment(
+        AD<double> x,  AD<double> y,    // point C
+        AD<double> x1, AD<double> y1,   // segment end A
+        AD<double> x2, AD<double> y2)   // segment end B
+    {
+        AD<double> dx = x2 - x1;
+        AD<double> dy = y2 - y1;
+        AD<double> dx1 = x1 - x;
+        AD<double> dy1 = y1 - y;
+        AD<double> dx2 = x2 - x;
+        AD<double> dy2 = y2 - y;
+
+        // Dot product AB*AC is positive, when the angle is acute.
+        AD<double> dot_product_ab_ac = - dx*dx1 - dy*dy1;
+        if (dot_product_ab_ac <= 0) {
+            // Angle A is obtuse: use distance |AC|.
+            return sqrt(dx1*dx1 + dy1*dy1);
+        }
+
+        // Dot product BA*BC is positive, when the angle is acute.
+        AD<double> dot_product_ba_bc = dx*dx2 + dy*dy2;
+        if (dot_product_ba_bc <= 0) {
+            // Angle B is obtuse: use distance |BC|.
+            return sqrt(dx2*dx2 + dy2*dy2);
+        }
+
+        // Both angles A and B are acute.
+        // Compute distance to the line.
+        return fabs(dy*x - dx*y + x2*y1 - y2*x1) / sqrt(dy*dy + dx*dx);
+    }
+
+    //
+    // Compute distance from a point to a reference trajectory
     //
     AD<double> distanceToRefTrajectory(AD<double> x, AD<double> y) {
-        //TODO:
-        // abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2*y1 - y2*x1) /
-        //     sqrt((y2 - y1)^2 + (x2 - x1)^2))
-        return 1;
+
+        // Get distance to the first trajectory segment.
+        AD<double> distance = distanceToLineSegment(x, y,
+            ref_x_[0], ref_y_[0], ref_x_[1], ref_y_[1]);
+
+        for (unsigned i=2; i<ref_x_.size(); ++i) {
+
+            // Distance to the next trajectory segment.
+            AD<double> d = distanceToLineSegment(x, y,
+                ref_x_[i-1], ref_y_[i-1], ref_x_[i], ref_y_[i]);
+
+            if (d < distance)
+                distance = d;
+        }
+        return distance;
     }
 };
 
@@ -206,7 +246,8 @@ MPC::MPC() {
     pred_x_ = vector<double>(N_STEP);
     pred_y_ = vector<double>(N_STEP);
 
-    is_last_fit_success_ = true;
+    step_ = 0;
+    trace_.open("mpc.trace");
 }
 
 MPC::~MPC() {}
@@ -271,9 +312,24 @@ void MPC::updateRef(const vector<double>& x, const vector<double>& y,
     }
 }
 
-bool MPC::solve(VectorXd state0, VectorXd actuator0,
+void MPC::solve(VectorXd state0, VectorXd actuator0,
                 vector<double> ptsx, vector<double> ptsy)
 {
+    //
+    // print input data
+    //
+    cout << "step " << step_ << "        \r" << flush;
+    trace_ << "--- step " << step_++ << endl;
+    trace_ << "    x = " << state0[0] << ", y = " << state0[1] <<
+              ", psi = " << state0[2] << ", v = " << state0[3] << endl;
+    trace_ << "    pts = ";
+    for (int i=0; i<6; i++) {
+        if (i > 0)
+            trace_ << ", ";
+        trace_ << "(" << ptsx[i] << ", " << ptsy[i] << ")";
+    }
+    trace_ << endl;
+
     //
     // update the reference trajectory
     // the reference trajectory should be calculated using the measured state
@@ -300,14 +356,6 @@ bool MPC::solve(VectorXd state0, VectorXd actuator0,
     // set variables
     //
     Dvector xi(2), xl(2), xu(2);
-
-    if (is_last_fit_success_) {
-        xi[0] = steering_;
-        xi[1] = throttle_;
-    } else {
-        xi[0] = actuator0[0];
-        xi[1] = actuator0[1];
-    }
 
     // set variable boundaries
     xl[0] = -MAX_STEERING; xu[0] = MAX_STEERING;
@@ -342,50 +390,57 @@ bool MPC::solve(VectorXd state0, VectorXd actuator0,
     // solve the problem
     CppAD::ipopt::solve<Dvector, FG_eval>(options, xi, xl, xu, gl, gu, fg_eval, solution);
 
-    is_last_fit_success_ = (solution.status ==
-                            CppAD::ipopt::solve_result<Dvector>::success);
-
-    // Check some of the solution values
-    //      possible values for the result status
-    //      enum status_type {
-    //           0: not_defined,
-    //           1: success,
-    //           2: maxiter_exceeded,
-    //           3: stop_at_tiny_step,
-    //           4: stop_at_acceptable_point,
-    //           5: local_infeasibility,
-    //           6: user_requested_stop,
-    //           7: feasible_point_found,
-    //           8: diverging_iterates,
-    //           9: restoration_failure,
-    //           10: error_in_step_computation,
-    //           11: invalid_number_detected,
-    //           12: too_few_degrees_of_freedom,
-    //           13: internal_error,
-    //           14: unknown
-    //      };
-#if 0
     // Print out the results
-    cout << "solution status: " << solution.status << endl;
-    cout << "Cost " << solution.obj_value << endl;
-    cout << "optimized variables: ";
+    trace_ << "solution status: " << solution.status << endl;
+    trace_ << "Cost " << solution.obj_value << endl;
+    trace_ << "optimized variables: ";
     for (unsigned i=0; i<solution.x.size(); ++i) {
-        cout << solution.x[i] << "  ";
+        trace_ << solution.x[i] << "  ";
     }
-    cout << endl;
+    trace_ << endl;
 
-    cout << "constraints: ";
+    trace_ << "constraints: ";
     for (unsigned i=0; i<solution.g.size(); ++i) {
-        cout << solution.g[i] << "  ";
+        trace_ << solution.g[i] << "  ";
     }
-    cout << endl;
-#endif
-    // assign the optimized values
-    steering_ = solution.x[0];
-    throttle_ = solution.x[1];
+    trace_ << endl;
+
+    // Check the solution status.
+    // Possible values for the result status:
+    //      0: not_defined,
+    //      1: success,
+    //      2: maxiter_exceeded,
+    //      3: stop_at_tiny_step,
+    //      4: stop_at_acceptable_point,
+    //      5: local_infeasibility,
+    //      6: user_requested_stop,
+    //      7: feasible_point_found,
+    //      8: diverging_iterates,
+    //      9: restoration_failure,
+    //      10: error_in_step_computation,
+    //      11: invalid_number_detected,
+    //      12: too_few_degrees_of_freedom,
+    //      13: internal_error,
+    //      14: unknown
+
+    if (solution.status == CppAD::ipopt::solve_result<Dvector>::success) {
+        // assign the optimized values
+        steering_ = solution.x[0];
+        throttle_ = solution.x[1];
+    } else {
+        // Cannot find optimal control.
+        // Keep same steering angle and decelerate.
+        cout << "\n -- FAILED\n";
+        throttle_ = -MAX_THROTTLE;
+    }
 
     // update the predicted trajectory
     updatePred(estimated_state0);
 
-    return is_last_fit_success_;
+    //
+    // print output data
+    //
+//throttle_value = 0.2;
+    trace_ << "    steering = " << steering_ / MAX_STEERING <<
+               ", throttle = " << throttle_ << endl;
 }

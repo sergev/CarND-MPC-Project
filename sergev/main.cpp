@@ -4,8 +4,6 @@
 // Note: units in this project is not self-consistent
 // We assume the speed is in MPH and the time is in second
 //
-#include <iostream>
-#include <fstream>
 #include <vector>
 #include <chrono>
 #include <thread>
@@ -44,11 +42,7 @@ int main()
     // mpc is initialized here!
     MPC mpc;
 
-    unsigned step = 0;
-    ofstream trace;
-    trace.open("mpc.trace");
-
-    h.onMessage([&mpc, &step, &trace](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+    h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                        uWS::OpCode opCode) {
         // "42" at the start of the message means there's a websocket message event.
         // The 4 signifies a websocket message
@@ -84,19 +78,6 @@ int main()
                     // current throttle between [-1, 1]
                     double throttle = j[1]["throttle"];
 
-                    // print input data
-                    cout << "step " << step << "        \r" << flush;
-                    trace << "--- step " << step++ << endl;
-                    trace << "    x = " << px  << ", y = " << py <<
-                             ", psi = " << psi << ", v = " << v << endl;
-                    trace << "    pts = ";
-                    for (int i=0; i<6; i++) {
-                        if (i > 0)
-                            trace << ", ";
-                        trace << "(" << ptsx[i] << ", " << ptsy[i] << ")";
-                    }
-                    trace << endl;
-
                     // search the optimized solution with given initial state
                     Vector4d state0 {px, py, psi, v};
                     Vector2d actuator0 {steering, throttle};
@@ -104,11 +85,6 @@ int main()
 
                     double steering_value = mpc.getSteering();
                     double throttle_value = mpc.getThrottle();
-//throttle_value = 0.2;
-
-                    // print output data
-                    trace << "    steering = " << steering_value <<
-                               ", throttle = " << throttle_value << endl;
 
                     json msgJson;
 

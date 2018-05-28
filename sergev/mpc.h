@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <eigen3/Eigen/Dense>
+#include <fstream>
 
 using namespace std;
 using namespace Eigen;
@@ -27,7 +28,7 @@ public:
     // @param ptsx: x coordinates (global coordinates) in the reference trajectory
     // @param ptsy: y coordinates (global coordinates) in the reference trajectory
     //
-    bool solve(VectorXd state0, VectorXd actuator0,
+    void solve(VectorXd state0, VectorXd actuator0,
                vector<double> ptsx, vector<double> ptsy);
 
     // latency getter
@@ -62,7 +63,8 @@ private:
     double steering_;           // constant steering angle
     double throttle_;           // constant throttle
 
-    bool is_last_fit_success_;  // an indicator for the success of last fit
+    unsigned step_;             // index of computation step
+    ofstream trace_;            // debug output
 
     //
     // update the points in the predicted trajectory
