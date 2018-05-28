@@ -8,13 +8,12 @@
 #include "mpc.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
-const double MAX_SPEED  = 60;       // maximum speed, miles per hour
-const int    POLY_ORDER = 3;        // order of the polynomial fit
+const double MAX_SPEED  = 70;       // maximum speed, miles per hour
 
 // time step should be long enough to make the system be able to response timely
-const double PRED_TIME_STEP     = 0.2;      // prediction time step in seconds
-const int    N_STEP             = 8;        // number of prediction steps
-const double MAX_STEERING       = 25 * M_PI/180; // max 25 degrees
+const double PRED_TIME_STEP     = 0.1;              // prediction time step in seconds
+const int    N_STEP             = 15;               // number of prediction steps
+const double MAX_STEERING       = 25 * M_PI/180;    // max 25 degrees
 const double MAX_THROTTLE       = 1.0;
 
 using CppAD::AD;
@@ -133,7 +132,6 @@ public:
         next_actuator[1] = vars[1];     // throttle
 
         AD<double> cte;                 // current cross track error
-        AD<double> ss_cte      = 0.0;   // sum of square of cross track error
         AD<double> ss_speed    = 0.0;   // sum of square of speed
         AD<double> max_abs_cte = 0.0;
         AD<double> t           = 0;
@@ -148,6 +146,12 @@ public:
             ADvector xy = globalToCar<ADvector, AD<double>>(
                 next_state[0], next_state[1], px0, py0, psi);
 
+            if (beyondTrajectory(xy[0], xy[1])) {
+                // Predicted point is beyond the reference trajectory
+                //cout << "\nbeyond trajectory!" << endl;
+                break;
+            }
+
             // calculate the cross track error
             cte = distanceToRefTrajectory(xy[0], xy[1]);
 
@@ -155,21 +159,21 @@ public:
             if (abs(cte) > max_abs_cte) {
                 max_abs_cte = abs(cte);
             }
-
+#if 0
+            cout << "cte: " << cte << " "
+               << "speed: " << next_state[3] << endl;
+#endif
             // penalty functions
+            objectives[0] += cte * cte * t;
             ss_speed += next_state[3] * next_state[3];
-            ss_cte += cte * cte;
         }
 #if 0
-        cout << "ss_cte: " << ss_cte << " "
-           << "ss speed: " << ss_speed << endl;
+        cout << "penalty: " << objectives[0] << " "
+           << "ss_ speed: " << ss_speed << endl;
 #endif
-        // objective function
-        objectives[0] += ss_cte;
-
         // speed control
         if (state0_[3] < MAX_SPEED) {
-            objectives[0] -= (MAX_SPEED - state0_[3]) * 1e-3 * ss_speed;
+            objectives[0] -= (MAX_SPEED - state0_[3]) * 1e-4 * ss_speed;
         }
 
         // constraint functions
@@ -236,6 +240,21 @@ private:
                 distance = d;
         }
         return distance;
+    }
+
+    //
+    // Check whether a point lies beyond the reference trajectory
+    //
+    bool beyondTrajectory(AD<double> x, AD<double> y) {
+        const int last = ref_x_.size() - 1;
+
+        AD<double> x1 = ref_x_[last],   y1 = ref_y_[last];      // last point A
+        AD<double> x2 = ref_x_[last-1], y2 = ref_y_[last-1];    // previous point B
+
+        // Dot product AB*AC is negative, when the angle is obtuse.
+        AD<double> dot_product_ab_ac = (x2 - x1)*(x - x1) +
+                                       (y2 - y1)*(y - y1);
+        return (dot_product_ab_ac < 0);
     }
 };
 
@@ -431,7 +450,12 @@ void MPC::solve(VectorXd state0, VectorXd actuator0,
         // Cannot find optimal control.
         // Keep same steering angle and decelerate.
         cout << "\n -- FAILED\n";
-        throttle_ = -MAX_THROTTLE;
+        if (state0[3] > 10)
+            throttle_ = -MAX_THROTTLE;
+        else if (state0[3] > 2)
+            throttle_ = -MAX_THROTTLE/10;
+        else
+            throttle_ = 0;
     }
 
     // update the predicted trajectory
