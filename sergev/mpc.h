@@ -59,8 +59,6 @@ private:
     vector<double> pred_x_;     // x coordinates of the predicted trajectory
     vector<double> pred_y_;     // y coordinates of the predicted trajectory
 
-    VectorXd ref_poly_;         // polynomial coefficients for the reference trajectory
-
     double steering_;           // constant steering angle
     double throttle_;           // constant throttle
 

@@ -11,5 +11,5 @@ clean:
 mpc:            $(OBJS)
 		$(CXX) $(LDFLAGS) $(OBJS) $(LIBS) -o $@
 
-main.o: main.cpp mpc.h utilities.h
-mpc.o: mpc.cpp mpc.h utilities.h
+main.o: main.cpp mpc.h
+mpc.o: mpc.cpp mpc.h
