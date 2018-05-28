@@ -8,7 +8,7 @@
 #include "mpc.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
-const double MAX_SPEED  = 75;       // maximum speed, miles per hour
+const double MAX_SPEED  = 90;       // maximum speed, miles per hour
 
 // time step should be long enough to make the system be able to response timely
 const double PRED_TIME_STEP     = 0.1;              // prediction time step in seconds
@@ -372,7 +372,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
 
     // set variable boundaries
     xl[0] = -MAX_STEERING; xu[0] = MAX_STEERING;
-    xl[1] = 0;             xu[1] = MAX_THROTTLE;
+    xl[1] = -MAX_THROTTLE; xu[1] = MAX_THROTTLE;
 
     //
     // set constraints
