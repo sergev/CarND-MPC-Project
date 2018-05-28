@@ -79,8 +79,8 @@ int main()
                     double throttle = j[1]["throttle"];
 
                     // search the optimized solution with given initial state
-                    Vector4d state0 {px, py, psi, v};
-                    Vector2d actuator0 {steering, throttle};
+                    vector<double> state0 {px, py, psi, v};
+                    vector<double> actuator0 {steering, throttle};
                     mpc.solve(state0, actuator0, ptsx, ptsy);
 
                     double steering_value = mpc.getSteering();

@@ -8,7 +8,7 @@
 #include "mpc.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
-const double MAX_SPEED  = 70;       // maximum speed, miles per hour
+const double MAX_SPEED  = 75;       // maximum speed, miles per hour
 
 // time step should be long enough to make the system be able to response timely
 const double PRED_TIME_STEP     = 0.1;              // prediction time step in seconds
@@ -42,7 +42,7 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
     const double LF = 2.67;
 
     // Acceleration in meters per sec^2 at maximum throttle.
-    const double MAX_ACCEL = 3.0; //TODO
+    const double MAX_ACCEL = 10.0; //TODO
 
     // Conversion from MPH to meters per second.
     const double MPH_TO_METERS_PER_SEC = 0.44704;
@@ -98,7 +98,7 @@ public:
     // @param state0: initial state [px, py, psi, v]
     // @param ref_p: coefficients of the polynomial fit for the reference trajectory
     //
-    FG_eval(VectorXd state0, vector<double> ref_x, vector<double> ref_y) {
+    FG_eval(vector<double> state0, vector<double> ref_x, vector<double> ref_y) {
         state0_ = state0;
         ref_x_ = ref_x;
         ref_y_ = ref_y;
@@ -183,7 +183,7 @@ public:
 
 private:
 
-    VectorXd       state0_; // initial state of the optimization
+    vector<double> state0_; // initial state of the optimization
     vector<double> ref_x_;  // reference trajectory
     vector<double> ref_y_;
 
@@ -262,9 +262,6 @@ private:
 // Implement MPC
 //
 MPC::MPC() {
-    pred_x_ = vector<double>(N_STEP);
-    pred_y_ = vector<double>(N_STEP);
-
     step_ = 0;
     trace_.open("mpc.trace");
 }
@@ -286,13 +283,14 @@ vector<double> MPC::getPredx() { return pred_x_; }
 
 vector<double> MPC::getPredy() { return pred_y_; }
 
-void MPC::updatePred(const VectorXd &state0) {
-    VectorXd next_state(4);
-    for (unsigned i=0; i<next_state.size(); ++i) { next_state[i] = state0[i]; }
+void MPC::updatePred(vector<double> state0) {
 
-    VectorXd next_actuator(2);
-    next_actuator[0] = steering_;
-    next_actuator[1] = throttle_;
+    vector<double> next_state = state0;
+    vector<double> next_actuator {steering_, throttle_};
+
+    // allocate vectors
+    pred_x_.resize(N_STEP);
+    pred_y_.resize(N_STEP);
 
     double t = 0;
     for (int i=0; i<N_STEP; ++i) {
@@ -309,7 +307,7 @@ void MPC::updatePred(const VectorXd &state0) {
     }
 }
 
-void MPC::updateRef(const vector<double>& x, const vector<double>& y,
+void MPC::updateRef(vector<double> x, vector<double> y,
                     double px0, double py0, double psi) {
     assert(x.size() == y.size());
 
@@ -331,13 +329,13 @@ void MPC::updateRef(const vector<double>& x, const vector<double>& y,
     }
 }
 
-void MPC::solve(VectorXd state0, VectorXd actuator0,
+void MPC::solve(vector<double> state0, vector<double> actuator0,
                 vector<double> ptsx, vector<double> ptsy)
 {
     //
     // print input data
     //
-    cout << "step " << step_ << "        \r" << flush;
+    cout << "time " << step_*LATENCY << "s        \r" << flush;
     trace_ << "--- step " << step_++ << endl;
     trace_ << "    x = " << state0[0] << ", y = " << state0[1] <<
               ", psi = " << state0[2] << ", v = " << state0[3] << endl;
@@ -360,11 +358,7 @@ void MPC::solve(VectorXd state0, VectorXd actuator0,
     //
     // estimate the current status to compensate the latency
     //
-    VectorXd estimated_state0(4);
-    for (int i=0; i<state0.size(); ++i) {
-        estimated_state0[i] = state0[i];
-    }
-    estimated_state0 = globalKinematic(estimated_state0, actuator0, LATENCY);
+    vector<double> estimated_state0 = globalKinematic(state0, actuator0, LATENCY);
 
     //
     // set up the optimizer
@@ -448,8 +442,9 @@ void MPC::solve(VectorXd state0, VectorXd actuator0,
         throttle_ = solution.x[1];
     } else {
         // Cannot find optimal control.
+        cout << "time " << step_*LATENCY << "s -- brake!\n";
+
         // Keep same steering angle and decelerate.
-        cout << "\n -- FAILED\n";
         if (state0[3] > 10)
             throttle_ = -MAX_THROTTLE;
         else if (state0[3] > 2)

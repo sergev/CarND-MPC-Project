@@ -5,11 +5,9 @@
 #define MPC_MPC_H
 
 #include <vector>
-#include <eigen3/Eigen/Dense>
 #include <fstream>
 
 using namespace std;
-using namespace Eigen;
 
 class MPC {
 public:
@@ -28,7 +26,7 @@ public:
     // @param ptsx: x coordinates (global coordinates) in the reference trajectory
     // @param ptsy: y coordinates (global coordinates) in the reference trajectory
     //
-    void solve(VectorXd state0, VectorXd actuator0,
+    void solve(vector<double> state0, vector<double> actuator0,
                vector<double> ptsx, vector<double> ptsy);
 
     // latency getter
@@ -72,7 +70,7 @@ private:
     // @param state0: initial state of the car in [x, y, psi, v]
     // @param actuator: initial actuator values in [steering, throttle]
     //
-    void updatePred(const VectorXd &state0);
+    void updatePred(vector<double> state0);
 
     //
     // update the polynomial coefficients of the reference trajectory as well as
@@ -84,7 +82,7 @@ private:
     // @param y0: y coordinate of the origin of the new coordinate system in the old one
     // @param psi: orientation of the new coordinate system with respect to the old one
     //
-    void updateRef(const vector<double> &x, const vector<double> &y,
+    void updateRef(vector<double> x, vector<double> y,
                    double x0, double y0, double psi);
 };
 
