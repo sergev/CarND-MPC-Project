@@ -39,7 +39,9 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
     // presented in the classroom matched the previous radius.
     //
     // This is the length from front to CoG that has a similar radius.
-    const double LF = 2.67;
+    //const double LF = 2.67;
+    //const double LF = 3.4; good!
+    const double LF = 3.2;
 
     // Acceleration in meters per sec^2 at maximum throttle.
     const double MAX_ACCEL = 10.0; //TODO
@@ -263,6 +265,10 @@ private:
 //
 MPC::MPC() {
     step_ = 0;
+    round_ = 0;
+    last_round_ = 0;
+    init_x_ = 0.0;
+    init_y_ = 0.0;
     trace_.open("mpc.trace");
 }
 
@@ -336,14 +342,14 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     // print input data
     //
     cout << "time " << step_*LATENCY << "s        \r" << flush;
-    trace_ << "--- step " << step_++ << endl;
-    trace_ << "    x = " << state0[0] << ", y = " << state0[1] <<
-              ", psi = " << state0[2] << ", v = " << state0[3] << endl;
+    trace_ << "--- step " << step_ << endl;
+    trace_ << "    x = " << state0[0] << "  y = " << state0[1] <<
+              "  psi = " << state0[2] << "  v = " << state0[3] << endl;
     trace_ << "    pts = ";
     for (int i=0; i<6; i++) {
         if (i > 0)
-            trace_ << ", ";
-        trace_ << "(" << ptsx[i] << ", " << ptsy[i] << ")";
+            trace_ << "  ";
+        trace_ << "(" << ptsx[i] << " " << ptsy[i] << ")";
     }
     trace_ << endl;
 
@@ -354,6 +360,15 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     // time prior to the current time.
     //
     updateRef(ptsx, ptsy, state0[0], state0[1], state0[2]);
+    if (step_ == 0) {
+        init_x_ = ptsx[0];
+        init_y_ = ptsy[0];
+    } else if (ptsx[0] == init_x_ && ptsy[0] == init_y_ && step_ > last_round_ + 20) {
+        cout << "round " << round_ << " in " << (step_ - last_round_)*LATENCY << "s" << endl;
+        round_++;
+        last_round_ = step_;
+    }
+    step_++;
 
     //
     // estimate the current status to compensate the latency
@@ -461,5 +476,5 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
 //throttle_value = 0.2;
     trace_ << "    steering = " << steering_ / MAX_STEERING <<
-               ", throttle = " << throttle_ << endl;
+                "  throttle = " << throttle_ << endl;
 }

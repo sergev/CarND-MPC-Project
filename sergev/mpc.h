@@ -62,6 +62,12 @@ private:
     double throttle_;           // constant throttle
 
     unsigned step_;             // index of computation step
+    unsigned round_;            // round number
+    unsigned last_round_;       // step index of last round
+
+    double init_x_;             // initial starting point, x
+    double init_y_;             // initial starting point, y
+
     ofstream trace_;            // debug output
 
     //
