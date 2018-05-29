@@ -41,14 +41,13 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
     // This is the length from front to CoG that has a similar radius.
 //  const double LF = 2.67; // 29.5s 26.9s - original
 //  const double LF = 3.2;  // 28.3s 24.8s
-//  const double LF = 3.4;  // 27.0s 24.3s
-//  const double LF = 3.5;  // 27.5s 24.6s
-    const double LF = 3.6;  // 26.6s 23.5s
-//  const double LF = 3.7;  // 26.7s 23.8s
+    const double LF = 3.4;  // 27.5s 24.3s 24.4s 23.7s 23.7s 23.9s 24.3s 24.8s 24.4s 24.2s 24.4s (26.90)
+//  const double LF = 3.5;  // 26.8s 23.8s 24.5s 24.7s 24.4s 23.6s 23.3s 24.2s 24.3s 24.5s 24.7s (26.89)
+//  const double LF = 3.6;  // 27.2s 23.1s 23.9s 23.5s 24.4s 24.0s 23.9s 23.7s 24.0s 24.1s 24.0s (26.51)
+//  const double LF = 3.7;  // 27.4s 23.5s 24.0s 24.4s 24.6s 23.6s 24.2s 23.8s 23.8s 24.1s 24.4s (26.71)
 //  const double LF = 3.8;  // 27.3s 23.4s
 
     // Acceleration in meters per sec^2 at maximum throttle.
-    const double MAX_ACCEL = 10.0; //TODO
 
     // Conversion from MPH to meters per second.
     const double MPH_TO_METERS_PER_SEC = 0.44704;
@@ -61,11 +60,22 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
     auto steering = actuator[0];
     auto throttle = actuator[1];
 
+    // Acceleration in meters per sec^2 at maximum throttle.
+//  const double accel = (throttle >= 0) ? 4.0 : 15.0;  // 26.7s 23.4s 23.5s 23.5s 23.7s 23.7s 23.6s 24.0s 23.5s 23.8s 23.7s
+    const double accel = (throttle >= 0) ? 6.0 : 20.0;  // 26.3s 23.3s 22.5s 23.6s 23.2s 22.9s 23.1s 23.0s 23.4s 23.9s 23.4s
+//  const double accel = (throttle >= 0) ? 8.0 : 20.0;  // 27.3s 23.4s 23.9s 24.1s 23.9s 24.3s 23.3s 23.9s 23.7s 24.5s 24.5s
+//  const double accel = (throttle >= 0) ? 10.0 : 20.0; // 26.9s 24.2s 22.7s 23.5s 23.5s 23.6s 23.9s 23.8s 23.3s 23.8s 23.8s
+//  const double accel = (throttle >= 0) ? 14.0 : 20.0; // 27.1s 23.4s 23.4s 24.3s 24.1s 24.1s 23.0s 24.9s 24.3s 24.4s 23.7s
+//  const double accel = (throttle >= 0) ? 17.0 : 20.0; // 28.2s 24.2s 24.1s 24.1s 24.8s 23.9s 24.0s 23.6s 24.5s 24.2s 24.8s
+//  const double accel = (throttle >= 0) ? 10.0 : 30.0; // 28.2s 24.2s 24.1s 24.1s 24.8s 23.9s 24.0s 23.6s 24.5s 24.2s 24.8s
+//  const double accel = (throttle >= 0) ? 6.0 : 30.0;  // 27.0s 23.9s 24.3s 24.1s 23.6s 23.9s 24.1s 24.7s 23.6s 24.1s 24.3s
+//  const double accel = (throttle >= 0) ? 15.0 : 45.0; // 27.1s 24.4s 24.1s 25.0s 24.5s 24.1s 24.8s 24.2s 24.9s 24.7s 24.2s
+
     Vector next_state(state.size());
     next_state[0] = px  + (v * cos(psi) * dt);
     next_state[1] = py  + (v * sin(psi) * dt);
     next_state[2] = psi - (v * steering/LF * dt);
-    next_state[3] = (v + (throttle * MAX_ACCEL * dt)) * METERS_PER_SEC_TO_MPH;
+    next_state[3] = (v + (throttle * accel * dt)) * METERS_PER_SEC_TO_MPH;
 
     return next_state;
 }
