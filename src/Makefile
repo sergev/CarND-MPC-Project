@@ -1,7 +1,7 @@
 CXXFLAGS        = -Wall -std=c++11 -O
 INCLUDES        = -I/usr/local/include
-LIBS            = -L/usr/local/lib -Wl,-rpath,/usr/local/lib -lipopt -lz -lssl -luv -luWS
-OBJS            = MPC.o main.o
+LIBS            = -lipopt -lz -lssl -luv -luWS
+OBJS            = mpc.o main.o
 
 all:            mpc
 
@@ -11,5 +11,5 @@ clean:
 mpc:            $(OBJS)
 		$(CXX) $(LDFLAGS) $(OBJS) $(LIBS) -o $@
 
-MPC.o:          MPC.cpp
-main.o:         main.cpp
+main.o: main.cpp mpc.h
+mpc.o: mpc.cpp mpc.h
