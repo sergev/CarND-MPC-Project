@@ -4,7 +4,7 @@ Here you can find my solution to the CarND Model Predictive Controller project.
 This MPC project was the task #5 of the [Udacity Self-Driving Car Engineer Nanodegree program](https://www.udacity.com/course/self-driving-car-engineer-nanodegree--nd013).
 For details, see [article by Nick Hortovanyi](https://medium.com/@NickHortovanyi/carnd-controls-mpc-2f456ce658f).
 
-The original sources are available here: [https://github.com/udacity/CarND-MPC-Project].
+The original sources are available here: [udacity/CarND-MPC-Project](https://github.com/udacity/CarND-MPC-Project).
 
 On video, you can see the algorithm running with 90mph speed limit:
 
@@ -39,7 +39,7 @@ On video, you can see the algorithm running with 90mph speed limit:
 
 ## Run The Simulator
 
-1. Install the simulator from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
+1. Install the simulator from the [Udacity repository](https://github.com/udacity/self-driving-car-sim/releases).
 
 2. Run the control unit: `./mpc`.
 
