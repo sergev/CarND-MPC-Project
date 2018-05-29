@@ -39,9 +39,13 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
     // presented in the classroom matched the previous radius.
     //
     // This is the length from front to CoG that has a similar radius.
-    //const double LF = 2.67;
-    //const double LF = 3.4; good!
-    const double LF = 3.2;
+//  const double LF = 2.67; // 29.5s 26.9s - original
+//  const double LF = 3.2;  // 28.3s 24.8s
+//  const double LF = 3.4;  // 27.0s 24.3s
+//  const double LF = 3.5;  // 27.5s 24.6s
+    const double LF = 3.6;  // 26.6s 23.5s
+//  const double LF = 3.7;  // 26.7s 23.8s
+//  const double LF = 3.8;  // 27.3s 23.4s
 
     // Acceleration in meters per sec^2 at maximum throttle.
     const double MAX_ACCEL = 10.0; //TODO
