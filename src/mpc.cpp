@@ -63,7 +63,8 @@ vector<double> globalToCar(double px, double py, double px0, double py0, double 
 vector<double> globalKinematic(const vector<double> &state, const vector<double> &actuator, double dt)
 {
     // distance between the front wheel and the vehicle center
-    const double LF = 3.4;
+    //const double LF = 2.67;
+    const double LF = 3.2;
 
     // Conversion from MPH to meters per second.
     const double MPH_TO_METERS_PER_SEC = 0.44704;
@@ -198,10 +199,14 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
         ss_speed += next_state[3] * next_state[3];
     }
 
-    // speed control
-    if (v < MAX_SPEED) {
-        penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
+    if (max_cte_ > 3.0) {
+        penalty += 1000 * max_cte_;
+
+    } else if (v < MAX_SPEED) {
+        // speed control
+        penalty -= (MAX_SPEED - v) * 1e-5 * ss_speed;
     }
+
     return penalty;
 }
 
@@ -225,7 +230,7 @@ double constraint_eval(unsigned n, const double *actuator, double *grad, void *a
 
     // Cross-track error should not exceed the track width.
     // Use the value precomputed by obj_func().
-    return mpc->getMaxCTE() - 1.0;
+    return mpc->getMaxCTE() - 3.0;
 }
 
 //
@@ -344,6 +349,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     // estimate the current status to compensate the latency
     //
     vector<double> estimated_state0 = globalKinematic(state0, actuator0, LATENCY);
+    //vector<double> estimated_state0 = state0;
 
     // Create optimizer object.
     nlopt_opt opt = nlopt_create(NLOPT_LN_COBYLA, 2);
@@ -361,7 +367,11 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     nlopt_add_inequality_constraint(opt, constraint_eval, this, 0);
 
     // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 1e-4);
+    nlopt_set_xtol_rel(opt, 1e-8);
+    nlopt_set_maxeval(opt, 500);
+
+    double initial_step[2] = {MAX_STEERING / 2, MAX_THROTTLE / 2};
+    nlopt_set_initial_step(opt, initial_step);
 
     // Perform the optimization, starting with some initial guess.
     double actuator[2] = { steering_, throttle_ };  // initial guess
@@ -375,7 +385,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     trace_ << "    optimized variables = " << actuator[0] << "  " << actuator[1] << endl;
     trace_ << "    max_cte = " << max_cte_ << endl;
 
-    if (status >= 0) {
+    if (status >= 0 && max_cte_ <= 3.0) {
         // assign the optimized values
         steering_ = actuator[0];
         throttle_ = actuator[1];
