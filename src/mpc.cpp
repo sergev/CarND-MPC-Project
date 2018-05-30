@@ -202,6 +202,11 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
     if (v < MAX_SPEED) {
         penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
     }
+
+    if (max_cte_ > 2.0) {
+        penalty += 500 * max_cte_;
+    }
+
     return penalty;
 }
 
@@ -225,7 +230,7 @@ double constraint_eval(unsigned n, const double *actuator, double *grad, void *a
 
     // Cross-track error should not exceed the track width.
     // Use the value precomputed by obj_func().
-    return mpc->getMaxCTE() - 1.0;
+    return mpc->getMaxCTE() - 2.0;
 }
 
 //
@@ -360,8 +365,9 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     // Add constraint.
     nlopt_add_inequality_constraint(opt, constraint_eval, this, 0);
 
-    // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 1e-4);
+    // Stopping criteria, or a relative tolerance on the optimization parameters.
+    nlopt_set_xtol_rel(opt, 1e-8);
+    nlopt_set_maxeval(opt, 500);
 
     // Perform the optimization, starting with some initial guess.
     double actuator[2] = { steering_, throttle_ };  // initial guess
@@ -375,8 +381,11 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     trace_ << "    optimized variables = " << actuator[0] << "  " << actuator[1] << endl;
     trace_ << "    max_cte = " << max_cte_ << endl;
 
-    if (status >= 0) {
+    if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED || status == NLOPT_MAXEVAL_REACHED) &&
+        actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
+        actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
         // assign the optimized values
+
         steering_ = actuator[0];
         throttle_ = actuator[1];
     } else {
