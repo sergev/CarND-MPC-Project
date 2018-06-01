@@ -195,18 +195,12 @@ public:
             if (abs(cte) > max_abs_cte) {
                 max_abs_cte = abs(cte);
             }
-#if 0
-            cout << "cte: " << cte << " "
-               << "speed: " << next_state[3] << endl;
-#endif
+
             // penalty functions
             objectives[0] += cte * cte * t;
             ss_speed += next_state[3] * next_state[3];
         }
-#if 0
-        cout << "penalty: " << objectives[0] << " "
-           << "ss_ speed: " << ss_speed << endl;
-#endif
+
         // speed control
         if (state0_[3] < MAX_SPEED) {
             objectives[0] -= (MAX_SPEED - state0_[3]) * 1e-4 * ss_speed;
@@ -453,17 +447,15 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     CppAD::ipopt::solve<Dvector, FG_eval>(options, xi, xl, xu, gl, gu, fg_eval, solution);
 
     // Print out the results
-    trace_ << "solution status: " << solution.status << endl;
-    trace_ << "Cost " << solution.obj_value << endl;
-    trace_ << "optimized variables: ";
-    for (unsigned i=0; i<solution.x.size(); ++i) {
-        trace_ << solution.x[i] << "  ";
-    }
-    trace_ << endl;
-
-    trace_ << "constraints: ";
+    trace_ << "    solution status: " << solution.status << endl;
+    trace_ << "    cost " << solution.obj_value << "  constraints: ";
     for (unsigned i=0; i<solution.g.size(); ++i) {
         trace_ << solution.g[i] << "  ";
+    }
+    trace_ << endl;
+    trace_ << "    result: ";
+    for (unsigned i=0; i<solution.x.size(); ++i) {
+        trace_ << solution.x[i] << "  ";
     }
     trace_ << endl;
 
