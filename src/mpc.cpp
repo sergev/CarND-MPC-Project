@@ -63,7 +63,8 @@ vector<double> globalToCar(double px, double py, double px0, double py0, double 
 vector<double> globalKinematic(const vector<double> &state, const vector<double> &actuator, double dt)
 {
     // distance between the front wheel and the vehicle center
-    const double LF = 3.4;
+    //const double LF = 2.67;
+    const double LF = 2.8;
 
     // Conversion from MPH to meters per second.
     const double MPH_TO_METERS_PER_SEC = 0.44704;
@@ -170,37 +171,52 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
     double ss_speed = 0.0;   // sum of square of speed
     double t        = 0;
 
+    bool off_road = false;
+
+    neval_++;
     max_cte_ = 0.0;
     for (int i=0; i<N_STEP; ++i) {
         t += PRED_TIME_STEP;
 
-        // compute the next state
-        next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
+        if (off_road) {
+            penalty += 100;
+        } else {
+            // compute the next state
+            next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
 
-        // transform from global coordinates system to car's coordinate system
-        vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi);
+            // transform from global coordinates system to car's coordinate system
+            vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi);
 
-        if (beyondTrajectory(xy[0], xy[1])) {
-            // Predicted point is beyond the reference trajectory
-            //cout << "\nbeyond trajectory!" << endl;
-            break;
+            if (beyondTrajectory(xy[0], xy[1])) {
+                // Predicted point is beyond the reference trajectory
+                //cout << "\nbeyond trajectory!" << endl;
+                break;
+            }
+
+            // calculate the cross track error
+            double cte = distanceToRefTrajectory(xy[0], xy[1]);
+
+            if (cte > max_cte_) {
+                max_cte_ = cte;
+            }
+
+            // penalty functions
+            penalty += cte * cte * t;
+            ss_speed += next_state[3] * next_state[3];
+            if (next_state[3] < 0) {
+                penalty += ss_speed;
+            }
+
+            if (cte > 2.0) {
+                off_road = true;
+                penalty += 100;
+            }
         }
-
-        // calculate the cross track error
-        double cte = distanceToRefTrajectory(xy[0], xy[1]);
-
-        if (cte > max_cte_) {
-            max_cte_ = cte;
-        }
-
-        // penalty functions
-        penalty += cte * cte * t;
-        ss_speed += next_state[3] * next_state[3];
     }
 
     // speed control
     if (v < MAX_SPEED) {
-        penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
+        penalty -= (MAX_SPEED - v) * 5e-4 * ss_speed;
     }
 
     if (max_cte_ > 2.0) {
@@ -350,36 +366,85 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
     vector<double> estimated_state0 = globalKinematic(state0, actuator0, LATENCY);
 
-    // Create optimizer object.
-    nlopt_opt opt = nlopt_create(NLOPT_LN_COBYLA, 2);
+    double lower_bounds[2] = {-MAX_STEERING, -MAX_THROTTLE};
+    double upper_bounds[2] = {MAX_STEERING,  MAX_THROTTLE};
+    double actuator[2], cost;
+
+    //
+    // Global optimization.
+    //
+    nlopt_opt opt = nlopt_create(NLOPT_GN_ORIG_DIRECT, 2);
 
     // Set objective function.
+    neval_ = 0;;
     nlopt_set_min_objective(opt, fg_eval, this);
 
     // Specify bounds.
-    double lower_bounds[2] = {-MAX_STEERING, -MAX_THROTTLE};
-    double upper_bounds[2] = {MAX_STEERING,  MAX_THROTTLE};
+    nlopt_set_lower_bounds(opt, lower_bounds);
+    nlopt_set_upper_bounds(opt, upper_bounds);
+
+    // Stopping criteria, or. a relative tolerance on the optimization parameters.
+    nlopt_set_xtol_rel(opt, 0.01);
+    nlopt_set_maxeval(opt, 500);
+
+    // Perform the optimization, starting with some initial guess.
+    actuator[0] = actuator0[0];
+    actuator[1] = actuator0[1];
+    state0_ = estimated_state0;
+    nlopt_result status = nlopt_optimize(opt, actuator, &cost);
+    nlopt_destroy(opt);
+
+    trace_ << "    global status = " << status << endl;
+    trace_ << "    " << neval_ << " evaluations, cost = " << cost << "  max_cte = " << max_cte_ << endl;
+    trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
+
+    if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED) &&
+        actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
+        actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
+        // result looks good
+    } else {
+        // Cannot find optimal control.
+        cout << "time " << step_*LATENCY << "s -- global optimizer failed!\n";
+
+        // Keep same steering angle and decelerate.
+        actuator[0] = actuator0[0];
+        actuator[1] = actuator0[1];
+    }
+
+    //
+    // Local optimization.
+    //
+    opt = nlopt_create(NLOPT_LN_COBYLA, 2);
+
+    // Set objective function.
+    neval_ = 0;;
+    nlopt_set_min_objective(opt, fg_eval, this);
+
+    // Specify bounds.
     nlopt_set_lower_bounds(opt, lower_bounds);
     nlopt_set_upper_bounds(opt, upper_bounds);
 
     // Add constraint.
-    nlopt_add_inequality_constraint(opt, constraint_eval, this, 0);
+    //nlopt_add_inequality_constraint(opt, constraint_eval, this, 0);
 
     // Stopping criteria, or a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 1e-8);
-    nlopt_set_maxeval(opt, 500);
+    nlopt_set_xtol_rel(opt, 1e-3);
+    nlopt_set_maxeval(opt, 10000);
+
+    double initial_step[2] = {MAX_STEERING / 10, MAX_THROTTLE / 10};
+    nlopt_set_initial_step(opt, initial_step);
 
     // Perform the optimization, starting with some initial guess.
-    double actuator[2] = { steering_, throttle_ };  // initial guess
-    double cost;                                    // the minimum objective value upon return
+    //actuator[0] = actuator0[0];
+    //actuator[1] = actuator0[1];
     state0_ = estimated_state0;
-    nlopt_result status = nlopt_optimize(opt, actuator, &cost);
+    status = nlopt_optimize(opt, actuator, &cost);
+    nlopt_destroy(opt);
 
     // Print out the results
-    trace_ << "    solution status = " << status << endl;
-    trace_ << "    cost = " << cost << endl;
-    trace_ << "    optimized variables = " << actuator[0] << "  " << actuator[1] << endl;
-    trace_ << "    max_cte = " << max_cte_ << endl;
+    trace_ << "    local status = " << status << endl;
+    trace_ << "    " << neval_ << " evaluations, cost = " << cost << "  max_cte = " << max_cte_ << endl;
+    trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
     if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED || status == NLOPT_MAXEVAL_REACHED) &&
         actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
@@ -400,8 +465,6 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
         else
             throttle_ = 0;
     }
-
-    nlopt_destroy(opt);
 
     // update the predicted trajectory
     updatePred(estimated_state0);
