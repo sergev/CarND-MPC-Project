@@ -72,6 +72,7 @@ private:
     double max_cte_;            // maximum cross-track error
 
     unsigned step_;             // index of computation step
+    unsigned neval_;            // number of objective function evaluations
     unsigned round_;            // round number
     unsigned last_round_;       // step index of last round
 

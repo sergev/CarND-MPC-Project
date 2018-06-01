@@ -216,7 +216,7 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
 
     // speed control
     if (v < MAX_SPEED) {
-        penalty -= (MAX_SPEED - v) * 5e-4 * ss_speed;
+        penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
     }
 
     if (max_cte_ > 2.0) {
@@ -414,7 +414,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
     // Local optimization.
     //
-    opt = nlopt_create(NLOPT_LN_COBYLA, 2);
+    opt = nlopt_create(NLOPT_LN_BOBYQA, 2);
 
     // Set objective function.
     neval_ = 0;;
@@ -428,7 +428,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //nlopt_add_inequality_constraint(opt, constraint_eval, this, 0);
 
     // Stopping criteria, or a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 1e-3);
+    nlopt_set_xtol_rel(opt, 1e-4);
     nlopt_set_maxeval(opt, 10000);
 
     double initial_step[2] = {MAX_STEERING / 10, MAX_THROTTLE / 10};
