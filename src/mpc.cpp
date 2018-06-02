@@ -36,6 +36,7 @@ const double PRED_TIME_STEP     = 0.1;              // prediction time step in s
 const int    N_STEP             = 15;               // number of prediction steps
 const double MAX_STEERING       = 25 * M_PI/180;    // max 25 degrees
 const double MAX_THROTTLE       = 1.0;
+const double MAX_CTE            = 3.0;              // max cross track error
 
 //
 // transform coordinate from one coordinate system to the other
@@ -202,13 +203,17 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
             }
 
             // penalty functions
-            penalty += cte * cte * t;
+            penalty += cte * cte * t * t;
+            if (i == N_STEP-1) {
+                // Last cte costs more.
+                penalty += cte * cte * N_STEP;
+            }
             ss_speed += next_state[3] * next_state[3];
             if (next_state[3] < 0) {
                 penalty += ss_speed;
             }
 
-            if (cte > 2.0) {
+            if (cte > MAX_CTE) {
                 off_road = true;
                 penalty += 100;
             }
@@ -220,7 +225,7 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
         penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
     }
 
-    if (max_cte_ > 2.0) {
+    if (max_cte_ > MAX_CTE) {
         penalty += 500 * max_cte_;
     }
 
@@ -236,18 +241,6 @@ double obj_func(unsigned n, const double *actuator, double *grad, void *arg)
     vector<double> next_actuator { actuator[0], actuator[1] };
 
     return mpc->evaluatePenalty(next_actuator);
-}
-
-//
-// Constraint function.
-//
-double constraint_eval(unsigned n, const double *actuator, double *grad, void *arg)
-{
-    MPC *mpc = (MPC*) arg;
-
-    // Cross-track error should not exceed the track width.
-    // Use the value precomputed by obj_func().
-    return mpc->getMaxCTE() - 2.0;
 }
 
 //
@@ -385,7 +378,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     nlopt_set_upper_bounds(opt, upper_bounds);
 
     // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 0.01);
+    nlopt_set_xtol_rel(opt, 0.001);
     nlopt_set_maxeval(opt, 500);
 
     // Perform the optimization, starting with some initial guess.
