@@ -26,6 +26,7 @@
 #include <nlopt.h>
 #include <math.h>
 #include "mpc.h"
+#include "compass.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
 const double MAX_SPEED  = 90;       // maximum speed, miles per hour
@@ -229,7 +230,7 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
 //
 // Objective function.
 //
-double fg_eval(unsigned n, const double *actuator, double *grad, void *arg)
+double obj_func(unsigned n, const double *actuator, double *grad, void *arg)
 {
     MPC *mpc = (MPC*) arg;
     vector<double> next_actuator { actuator[0], actuator[1] };
@@ -377,7 +378,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
 
     // Set objective function.
     neval_ = 0;;
-    nlopt_set_min_objective(opt, fg_eval, this);
+    nlopt_set_min_objective(opt, obj_func, this);
 
     // Specify bounds.
     nlopt_set_lower_bounds(opt, lower_bounds);
@@ -414,35 +415,18 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
     // Local optimization.
     //
-    opt = nlopt_create(NLOPT_LN_BOBYQA, 2);
+    // Stopping criteria, or. a relative tolerance on the optimization parameters.
+    double   start_range = 0.1;
+    double   stop_range  = 1e-6;
+    unsigned maxeval     = 10000;
 
-    // Set objective function.
-    neval_ = 0;;
-    nlopt_set_min_objective(opt, fg_eval, this);
-
-    // Specify bounds.
-    nlopt_set_lower_bounds(opt, lower_bounds);
-    nlopt_set_upper_bounds(opt, upper_bounds);
-
-    // Add constraint.
-    //nlopt_add_inequality_constraint(opt, constraint_eval, this, 0);
-
-    // Stopping criteria, or a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 1e-4);
-    nlopt_set_maxeval(opt, 10000);
-
-    double initial_step[2] = {MAX_STEERING / 10, MAX_THROTTLE / 10};
-    nlopt_set_initial_step(opt, initial_step);
-
-    // Perform the optimization, starting with some initial guess.
-    //actuator[0] = actuator0[0];
-    //actuator[1] = actuator0[1];
+    neval_ = 0;
     state0_ = estimated_state0;
-    status = nlopt_optimize(opt, actuator, &cost);
-    nlopt_destroy(opt);
+    compass(2, lower_bounds, upper_bounds, actuator, obj_func, &maxeval, start_range, stop_range, 0.5, this);
+    status = NLOPT_SUCCESS;
 
     // Print out the results
-    trace_ << "    local status = " << status << endl;
+    //trace_ << "    local status = " << status << endl;
     trace_ << "    " << neval_ << " evaluations, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
