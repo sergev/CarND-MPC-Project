@@ -53,7 +53,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "direct.h"
+#include "cdirect.h"
 #include "redblack.h"
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))

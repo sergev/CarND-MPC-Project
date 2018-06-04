@@ -23,9 +23,10 @@
 //
 #include <iostream>
 #include <assert.h>
-#include <nlopt.h>
 #include <math.h>
+//#include <nlopt.h>
 #include "mpc.h"
+#include "cdirect.h"
 #include "compass.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
@@ -364,14 +365,16 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     double lower_bounds[2] = {-MAX_STEERING, -MAX_THROTTLE};
     double upper_bounds[2] = {MAX_STEERING,  MAX_THROTTLE};
     double actuator[2], cost;
+    unsigned maxeval;
 
     //
     // Global optimization.
     //
+#if 0
     nlopt_opt opt = nlopt_create(NLOPT_GN_ORIG_DIRECT, 2);
 
     // Set objective function.
-    neval_ = 0;;
+    neval_ = 0;
     nlopt_set_min_objective(opt, obj_func, this);
 
     // Specify bounds.
@@ -386,14 +389,27 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     actuator[0] = actuator0[0];
     actuator[1] = actuator0[1];
     state0_ = estimated_state0;
-    nlopt_result status = nlopt_optimize(opt, actuator, &cost);
+    int status;
+    switch (nlopt_optimize(opt, actuator, &cost)) {
+    case NLOPT_SUCCESS:         status = 0;         break;
+    case NLOPT_XTOL_REACHED:    status = ERANGE;    break;
+    case NLOPT_MAXEVAL_REACHED: status = EOVERFLOW; break;
+    default:                    status = EINVAL;    break;
+    }
     nlopt_destroy(opt);
-
+#else
+    double minf;
+    double xtol_rel = 1e-3;
+    maxeval         = 500;
+    neval_ = 0;
+    state0_ = estimated_state0;
+    int status = direct(2, obj_func, this, lower_bounds, upper_bounds, actuator, &minf, &maxeval, xtol_rel, 1e-4, 0);
+#endif
     trace_ << "    global status = " << status << endl;
     trace_ << "    " << neval_ << " global evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
-    if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED) &&
+    if ((status == 0 || status == ERANGE) &&
         actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
         actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
         // result looks good
@@ -410,21 +426,21 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     // Local optimization.
     //
     // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    double   start_range = 0.1;
-    double   stop_range  = 1e-3;
-    unsigned maxeval     = 10000;
+    double start_range = 0.1;
+    double stop_range  = 1e-3;
+    maxeval            = 10000;
 
     neval_ = 0;
     state0_ = estimated_state0;
     compass(2, lower_bounds, upper_bounds, actuator, obj_func, &maxeval, start_range, stop_range, 0.5, this);
-    status = NLOPT_SUCCESS;
+    status = 0;
 
     // Print out the results
     //trace_ << "    local status = " << status << endl;
     trace_ << "    " << neval_ << " local evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
-    if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED || status == NLOPT_MAXEVAL_REACHED) &&
+    if ((status == 0 || status == ERANGE || status == EOVERFLOW) &&
         actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
         actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
         // assign the optimized values
