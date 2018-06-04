@@ -172,8 +172,7 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
     double penalty  = 0;
     double ss_speed = 0.0;   // sum of square of speed
     double t        = 0;
-
-    bool off_road = false;
+    bool   off_road = false;
 
     neval_++;
     max_cte_ = 0.0;
@@ -203,7 +202,17 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
             }
 
             // penalty functions
-            if (i < N_STEP-1) {
+            if (cte > MAX_CTE) {
+                // Went off road.
+                penalty += cte * cte * 100;
+
+                if (!off_road) {
+                    off_road = true;
+                    next_actuator[0] = 0;
+                    next_actuator[1] = 0;
+                }
+            } else if (i < N_STEP-1) {
+                // Normal case.
                 penalty += cte * cte;
             } else {
                 // Last cte costs more.
@@ -215,23 +224,12 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
                 // Don't drive backwards.
                 penalty += ss_speed;
             }
-
-            if (cte > MAX_CTE) {
-                off_road = true;
-                penalty += 100;
-                //next_actuator[0] = 0;
-                //next_actuator[1] = 0;
-            }
         }
     }
 
     // speed control
     if (v < MAX_SPEED) {
         penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
-    }
-
-    if (max_cte_ > MAX_CTE) {
-        penalty += 500 * max_cte_;
     }
 
     return penalty;
@@ -277,8 +275,6 @@ vector<double> MPC::getRefy() { return ref_y_; }
 vector<double> MPC::getPredx() { return pred_x_; }
 
 vector<double> MPC::getPredy() { return pred_y_; }
-
-double MPC::getMaxCTE() { return max_cte_; }
 
 void MPC::updatePred(vector<double> state0)
 {
