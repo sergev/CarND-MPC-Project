@@ -203,19 +203,24 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
             }
 
             // penalty functions
-            penalty += cte * cte * t * t;
-            if (i == N_STEP-1) {
+            if (i < N_STEP-1) {
+                penalty += cte * cte;
+            } else {
                 // Last cte costs more.
                 penalty += cte * cte * N_STEP;
             }
+
             ss_speed += next_state[3] * next_state[3];
             if (next_state[3] < 0) {
+                // Don't drive backwards.
                 penalty += ss_speed;
             }
 
             if (cte > MAX_CTE) {
                 off_road = true;
                 penalty += 100;
+                //next_actuator[0] = 0;
+                //next_actuator[1] = 0;
             }
         }
     }
