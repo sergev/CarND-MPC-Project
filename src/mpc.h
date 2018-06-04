@@ -67,6 +67,8 @@ private:
 
     double steering_;           // constant steering angle
     double throttle_;           // constant throttle
+    double steering_rate_;      // change rate of steering angle
+    double throttle_rate_;      // change rate of throttle
 
     vector<double> state0_;     // initial state for nlopt
     double max_cte_;            // maximum cross-track error
