@@ -379,7 +379,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     nlopt_set_upper_bounds(opt, upper_bounds);
 
     // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 0.001);
+    nlopt_set_xtol_rel(opt, 1e-3);
     nlopt_set_maxeval(opt, 500);
 
     // Perform the optimization, starting with some initial guess.
@@ -390,7 +390,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     nlopt_destroy(opt);
 
     trace_ << "    global status = " << status << endl;
-    trace_ << "    " << neval_ << " evaluations, cost = " << cost << "  max_cte = " << max_cte_ << endl;
+    trace_ << "    " << neval_ << " global evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
     if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED) &&
@@ -411,7 +411,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
     // Stopping criteria, or. a relative tolerance on the optimization parameters.
     double   start_range = 0.1;
-    double   stop_range  = 1e-6;
+    double   stop_range  = 1e-3;
     unsigned maxeval     = 10000;
 
     neval_ = 0;
@@ -421,7 +421,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
 
     // Print out the results
     //trace_ << "    local status = " << status << endl;
-    trace_ << "    " << neval_ << " evaluations, cost = " << cost << "  max_cte = " << max_cte_ << endl;
+    trace_ << "    " << neval_ << " local evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
     if ((status == NLOPT_SUCCESS || status == NLOPT_XTOL_REACHED || status == NLOPT_MAXEVAL_REACHED) &&
