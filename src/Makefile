@@ -2,7 +2,7 @@ CXXFLAGS        = -Wall -std=c++11 -O
 INCLUDES        = -I/usr/local/include
 #LIBS            = -lipopt -lz -lssl -luv -luWS
 LIBS            = -lnlopt -lz -lssl -luv -luWS
-OBJS            = mpc.o main.o compass.o
+OBJS            = mpc.o main.o compass.o direct.o redblack.o
 
 all:            mpc
 
