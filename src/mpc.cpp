@@ -21,11 +21,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-#define HAVE_CSTDDEF
-#include <cppad/cppad.hpp>
-#include <cppad/ipopt/solve.hpp>
-
+#include <iostream>
+#include <assert.h>
+#include <math.h>
 #include "mpc.h"
+#include "direct.h"
+#include "compass.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
 const double MAX_SPEED  = 90;       // maximum speed, miles per hour
@@ -35,70 +36,7 @@ const double PRED_TIME_STEP     = 0.1;              // prediction time step in s
 const int    N_STEP             = 15;               // number of prediction steps
 const double MAX_STEERING       = 25 * M_PI/180;    // max 25 degrees
 const double MAX_THROTTLE       = 1.0;
-
-using CppAD::AD;
-
-//
-// the global kinematic model.
-//
-// @param state: state of the car in [x, y, psi, v]
-// @param actuator: actuator values in [steering, throttle]
-// @param dt: time step (s)
-//
-// @return next_state: state of the car after time dt
-//
-template <class Vector, class T>
-inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt) {
-
-    // distance between the front wheel and the vehicle center
-    // This value was obtained by measuring the radius formed by running the vehicle in the
-    // simulator around in a circle with a constant steering angle and velocity on a
-    // flat terrain.
-    //
-    // Lf was tuned until the radius formed by the simulating the model
-    // presented in the classroom matched the previous radius.
-    //
-    // This is the length from front to CoG that has a similar radius.
-//  const double LF = 2.67; // 29.5s 26.9s - original
-//  const double LF = 3.2;  // 28.3s 24.8s
-    const double LF = 3.4;  // 27.5s 24.3s 24.4s 23.7s 23.7s 23.9s 24.3s 24.8s 24.4s 24.2s 24.4s (26.90)
-//  const double LF = 3.5;  // 26.8s 23.8s 24.5s 24.7s 24.4s 23.6s 23.3s 24.2s 24.3s 24.5s 24.7s (26.89)
-//  const double LF = 3.6;  // 27.2s 23.1s 23.9s 23.5s 24.4s 24.0s 23.9s 23.7s 24.0s 24.1s 24.0s (26.51)
-//  const double LF = 3.7;  // 27.4s 23.5s 24.0s 24.4s 24.6s 23.6s 24.2s 23.8s 23.8s 24.1s 24.4s (26.71)
-//  const double LF = 3.8;  // 27.3s 23.4s
-
-    // Acceleration in meters per sec^2 at maximum throttle.
-
-    // Conversion from MPH to meters per second.
-    const double MPH_TO_METERS_PER_SEC = 0.44704;
-    const double METERS_PER_SEC_TO_MPH = 2.23694;
-
-    auto px       = state[0];
-    auto py       = state[1];
-    auto psi      = state[2];
-    auto v        = state[3] * MPH_TO_METERS_PER_SEC;
-    auto steering = actuator[0];
-    auto throttle = actuator[1];
-
-    // Acceleration in meters per sec^2 at maximum throttle.
-//  const double accel = (throttle >= 0) ? 4.0 : 15.0;  // 26.7s 23.4s 23.5s 23.5s 23.7s 23.7s 23.6s 24.0s 23.5s 23.8s 23.7s
-    const double accel = (throttle >= 0) ? 6.0 : 20.0;  // 26.3s 23.3s 22.5s 23.6s 23.2s 22.9s 23.1s 23.0s 23.4s 23.9s 23.4s
-//  const double accel = (throttle >= 0) ? 8.0 : 20.0;  // 27.3s 23.4s 23.9s 24.1s 23.9s 24.3s 23.3s 23.9s 23.7s 24.5s 24.5s
-//  const double accel = (throttle >= 0) ? 10.0 : 20.0; // 26.9s 24.2s 22.7s 23.5s 23.5s 23.6s 23.9s 23.8s 23.3s 23.8s 23.8s
-//  const double accel = (throttle >= 0) ? 14.0 : 20.0; // 27.1s 23.4s 23.4s 24.3s 24.1s 24.1s 23.0s 24.9s 24.3s 24.4s 23.7s
-//  const double accel = (throttle >= 0) ? 17.0 : 20.0; // 28.2s 24.2s 24.1s 24.1s 24.8s 23.9s 24.0s 23.6s 24.5s 24.2s 24.8s
-//  const double accel = (throttle >= 0) ? 10.0 : 30.0; // 28.2s 24.2s 24.1s 24.1s 24.8s 23.9s 24.0s 23.6s 24.5s 24.2s 24.8s
-//  const double accel = (throttle >= 0) ? 6.0 : 30.0;  // 27.0s 23.9s 24.3s 24.1s 23.6s 23.9s 24.1s 24.7s 23.6s 24.1s 24.3s
-//  const double accel = (throttle >= 0) ? 15.0 : 45.0; // 27.1s 24.4s 24.1s 25.0s 24.5s 24.1s 24.8s 24.2s 24.9s 24.7s 24.2s
-
-    Vector next_state(state.size());
-    next_state[0] = px  + (v * cos(psi) * dt);
-    next_state[1] = py  + (v * sin(psi) * dt);
-    next_state[2] = psi - (v * steering/LF * dt);
-    next_state[3] = (v + (throttle * accel * dt)) * METERS_PER_SEC_TO_MPH;
-
-    return next_state;
-}
+const double MAX_CTE            = 3.0;              // max cross track error
 
 //
 // transform coordinate from one coordinate system to the other
@@ -107,80 +45,148 @@ inline Vector globalKinematic(const Vector& state, const Vector& actuator, T dt)
 // @param X0: origin (x0, y0) of the new coordinate system in the old one
 // @param psi: orientation of the new coordinate system with respect to the old one
 //
-template <class Vector, class T>
-inline Vector globalToCar(T px, T py, T px0, T py0, T psi) {
-    Vector X_new(2);
-
-    T c = cos(psi);
-    T s = sin(psi);
-    T dx = px - px0;
-    T dy = py - py0;
+vector<double> globalToCar(double px, double py, double px0, double py0, double psi)
+{
+    double dx     = px - px0;
+    double dy     = py - py0;
+    double cospsi = cos(psi);
+    double sinpsi = sin(psi);
 
     // a rotation clock-wise about the origin
-    X_new[0] = dx*c + dy*s;
-    X_new[1] = -dx*s + dy*c;
-
-    return X_new;
+    vector<double> xy { dx*cospsi + dy*sinpsi,
+                       -dx*sinpsi + dy*cospsi };
+    return xy;
 }
 
-class FG_eval {
-public:
+//
+// The global kinematic model.
+// Update the state of the car after time dt.
+//
+vector<double> globalKinematic(const vector<double> &state, const vector<double> &actuator, double dt)
+{
+    // distance between the front wheel and the vehicle center
+    //const double LF = 2.67;
+    const double LF = 2.8;
 
-    typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
+    // Conversion from MPH to meters per second.
+    const double MPH_TO_METERS_PER_SEC = 0.44704;
+    const double METERS_PER_SEC_TO_MPH = 2.23694;
 
-    //
-    // constructor
-    //
-    // @param state0: initial state [px, py, psi, v]
-    // @param ref_p: coefficients of the polynomial fit for the reference trajectory
-    //
-    FG_eval(vector<double> state0, vector<double> ref_x, vector<double> ref_y) {
-        state0_ = state0;
-        ref_x_ = ref_x;
-        ref_y_ = ref_y;
+    double px       = state[0];
+    double py       = state[1];
+    double psi      = state[2];
+    double v        = state[3] * MPH_TO_METERS_PER_SEC;
+    double steering = actuator[0];
+    double throttle = actuator[1];
+
+    // Acceleration in meters per sec^2 at maximum throttle.
+    const double accel = (throttle >= 0) ? 6.0 : 20.0;
+
+    vector<double> next_state(4);
+    next_state[0] = px  + (v * cos(psi) * dt);
+    next_state[1] = py  + (v * sin(psi) * dt);
+    next_state[2] = psi - (v * steering/LF * dt);
+    next_state[3] = (v + (throttle * accel * dt)) * METERS_PER_SEC_TO_MPH;
+    return next_state;
+}
+
+//
+// Compute distance from a point to a line segment
+//
+double distanceToLineSegment(
+    double x,  double y,    // point C
+    double x1, double y1,   // segment end A
+    double x2, double y2)   // segment end B
+{
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    double dx1 = x1 - x;
+    double dy1 = y1 - y;
+    double dx2 = x2 - x;
+    double dy2 = y2 - y;
+
+    // Dot product AB*AC is positive, when the angle is acute.
+    double dot_product_ab_ac = - dx*dx1 - dy*dy1;
+    if (dot_product_ab_ac <= 0) {
+        // Angle A is obtuse: use distance |AC|.
+        return sqrt(dx1*dx1 + dy1*dy1);
     }
 
-    //
-    // Overload () operator.
-    //
-    // @param fg: objective and constraints
-    //            The first one is objective and the rest are constraints.
-    // @param x: variables
-    //
-    void operator()(ADvector &objectives, const ADvector &vars) {
+    // Dot product BA*BC is positive, when the angle is acute.
+    double dot_product_ba_bc = dx*dx2 + dy*dy2;
+    if (dot_product_ba_bc <= 0) {
+        // Angle B is obtuse: use distance |BC|.
+        return sqrt(dx2*dx2 + dy2*dy2);
+    }
 
-        // initialize objectives
-        for (unsigned i=0; i < objectives.size(); ++i) {
-            objectives[i] = 0;
-        }
+    // Both angles A and B are acute.
+    // Compute distance to the line.
+    return fabs(dy*x - dx*y + x2*y1 - y2*x1) / sqrt(dy*dy + dx*dx);
+}
 
-        AD<double> px0 = state0_[0];
-        AD<double> py0 = state0_[1];
-        AD<double> psi = state0_[2];
+//
+// Compute distance from a point to a reference trajectory
+//
+double MPC::distanceToRefTrajectory(double x, double y)
+{
+    // Get distance to the first trajectory segment.
+    double distance = distanceToLineSegment(x, y,
+        ref_x_[0], ref_y_[0], ref_x_[1], ref_y_[1]);
 
-        ADvector next_state(4);
-        for (unsigned i=0; i<next_state.size(); ++i) {
-            next_state[i] = state0_[i];
-        }
+    for (unsigned i=2; i<ref_x_.size(); ++i) {
 
-        ADvector next_actuator(2);
-        next_actuator[0] = vars[0];     // steering angle
-        next_actuator[1] = vars[1];     // throttle
+        // Distance to the next trajectory segment.
+        double d = distanceToLineSegment(x, y,
+            ref_x_[i-1], ref_y_[i-1], ref_x_[i], ref_y_[i]);
 
-        AD<double> cte;                 // current cross track error
-        AD<double> ss_speed    = 0.0;   // sum of square of speed
-        AD<double> max_abs_cte = 0.0;
-        AD<double> t           = 0;
+        if (d < distance)
+            distance = d;
+    }
+    return distance;
+}
 
-        for (int i=0; i<N_STEP; ++i) {
-            t += PRED_TIME_STEP;
+//
+// Check whether a point lies beyond the reference trajectory
+//
+int MPC::beyondTrajectory(double x, double y)
+{
+    const int last = ref_x_.size() - 1;
 
+    double x1 = ref_x_[last],   y1 = ref_y_[last];      // last point A
+    double x2 = ref_x_[last-1], y2 = ref_y_[last-1];    // previous point B
+
+    // Dot product AB*AC is negative, when the angle is obtuse.
+    double dot_product_ab_ac = (x2 - x1)*(x - x1) +
+                               (y2 - y1)*(y - y1);
+    return (dot_product_ab_ac < 0);
+}
+
+double MPC::evaluatePenalty(vector<double> next_actuator)
+{
+    vector<double> next_state = state0_;
+    double px0 = state0_[0];
+    double py0 = state0_[1];
+    double psi = state0_[2];
+    double v   = state0_[3];
+
+    double penalty  = 0;
+    double ss_speed = 0.0;   // sum of square of speed
+    double t        = 0;
+    bool   off_road = false;
+
+    neval_++;
+    max_cte_ = 0.0;
+    for (int i=0; i<N_STEP; ++i) {
+        t += PRED_TIME_STEP;
+
+        if (off_road) {
+            penalty += 100;
+        } else {
             // compute the next state
             next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
 
             // transform from global coordinates system to car's coordinate system
-            ADvector xy = globalToCar<ADvector, AD<double>>(
-                next_state[0], next_state[1], px0, py0, psi);
+            vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi);
 
             if (beyondTrajectory(xy[0], xy[1])) {
                 // Predicted point is beyond the reference trajectory
@@ -189,109 +195,62 @@ public:
             }
 
             // calculate the cross track error
-            cte = distanceToRefTrajectory(xy[0], xy[1]);
+            double cte = distanceToRefTrajectory(xy[0], xy[1]);
 
-            // update several parameters
-            if (abs(cte) > max_abs_cte) {
-                max_abs_cte = abs(cte);
+            if (cte > max_cte_) {
+                max_cte_ = cte;
             }
 
             // penalty functions
-            objectives[0] += cte * cte * t;
+            if (cte > MAX_CTE) {
+                // Went off road.
+                penalty += cte * cte * 100;
+
+                if (!off_road) {
+                    off_road = true;
+                    next_actuator[0] = 0;
+                    next_actuator[1] = 0;
+                }
+            } else if (i < N_STEP-1) {
+                // Normal case.
+                penalty += cte * cte;
+            } else {
+                // Last cte costs more.
+                penalty += cte * cte * N_STEP;
+            }
+
             ss_speed += next_state[3] * next_state[3];
+            if (next_state[3] < 0) {
+                // Don't drive backwards.
+                penalty += ss_speed;
+            }
         }
-
-        // speed control
-        if (state0_[3] < MAX_SPEED) {
-            objectives[0] -= (MAX_SPEED - state0_[3]) * 1e-4 * ss_speed;
-        }
-
-        // constraint functions
-        objectives[1] = max_abs_cte;
-        return;
     }
 
-private:
-
-    vector<double> state0_; // initial state of the optimization
-    vector<double> ref_x_;  // reference trajectory
-    vector<double> ref_y_;
-
-    //
-    // Compute distance from a point to a line segment
-    //
-    AD<double> distanceToLineSegment(
-        AD<double> x,  AD<double> y,    // point C
-        AD<double> x1, AD<double> y1,   // segment end A
-        AD<double> x2, AD<double> y2)   // segment end B
-    {
-        AD<double> dx = x2 - x1;
-        AD<double> dy = y2 - y1;
-        AD<double> dx1 = x1 - x;
-        AD<double> dy1 = y1 - y;
-        AD<double> dx2 = x2 - x;
-        AD<double> dy2 = y2 - y;
-
-        // Dot product AB*AC is positive, when the angle is acute.
-        AD<double> dot_product_ab_ac = - dx*dx1 - dy*dy1;
-        if (dot_product_ab_ac <= 0) {
-            // Angle A is obtuse: use distance |AC|.
-            return sqrt(dx1*dx1 + dy1*dy1);
-        }
-
-        // Dot product BA*BC is positive, when the angle is acute.
-        AD<double> dot_product_ba_bc = dx*dx2 + dy*dy2;
-        if (dot_product_ba_bc <= 0) {
-            // Angle B is obtuse: use distance |BC|.
-            return sqrt(dx2*dx2 + dy2*dy2);
-        }
-
-        // Both angles A and B are acute.
-        // Compute distance to the line.
-        return fabs(dy*x - dx*y + x2*y1 - y2*x1) / sqrt(dy*dy + dx*dx);
+    // speed control
+    if (v < MAX_SPEED) {
+        penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
     }
 
-    //
-    // Compute distance from a point to a reference trajectory
-    //
-    AD<double> distanceToRefTrajectory(AD<double> x, AD<double> y) {
+    return penalty;
+}
 
-        // Get distance to the first trajectory segment.
-        AD<double> distance = distanceToLineSegment(x, y,
-            ref_x_[0], ref_y_[0], ref_x_[1], ref_y_[1]);
+//
+// Objective function.
+//
+double obj_func(unsigned n, const double *actuator, int *not_feasible, void *arg)
+{
+    MPC *mpc = (MPC*) arg;
+    vector<double> next_actuator { actuator[0], actuator[1] };
 
-        for (unsigned i=2; i<ref_x_.size(); ++i) {
-
-            // Distance to the next trajectory segment.
-            AD<double> d = distanceToLineSegment(x, y,
-                ref_x_[i-1], ref_y_[i-1], ref_x_[i], ref_y_[i]);
-
-            if (d < distance)
-                distance = d;
-        }
-        return distance;
-    }
-
-    //
-    // Check whether a point lies beyond the reference trajectory
-    //
-    bool beyondTrajectory(AD<double> x, AD<double> y) {
-        const int last = ref_x_.size() - 1;
-
-        AD<double> x1 = ref_x_[last],   y1 = ref_y_[last];      // last point A
-        AD<double> x2 = ref_x_[last-1], y2 = ref_y_[last-1];    // previous point B
-
-        // Dot product AB*AC is negative, when the angle is obtuse.
-        AD<double> dot_product_ab_ac = (x2 - x1)*(x - x1) +
-                                       (y2 - y1)*(y - y1);
-        return (dot_product_ab_ac < 0);
-    }
-};
+    return mpc->evaluatePenalty(next_actuator);
+}
 
 //
 // Implement MPC
 //
-MPC::MPC() {
+MPC::MPC()
+{
     step_ = 0;
     round_ = 0;
     last_round_ = 0;
@@ -317,8 +276,8 @@ vector<double> MPC::getPredx() { return pred_x_; }
 
 vector<double> MPC::getPredy() { return pred_y_; }
 
-void MPC::updatePred(vector<double> state0) {
-
+void MPC::updatePred(vector<double> state0)
+{
     vector<double> next_state = state0;
     vector<double> next_actuator {steering_, throttle_};
 
@@ -332,8 +291,7 @@ void MPC::updatePred(vector<double> state0) {
         next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
 
         // transform from global coordinates system to car's coordinate system
-        vector<double> xy = globalToCar<vector<double>, double>(
-            next_state[0], next_state[1], state0[0], state0[1], state0[2]);
+        vector<double> xy = globalToCar(next_state[0], next_state[1], state0[0], state0[1], state0[2]);
 
         // assign reference trajectory for each step
         pred_x_[i] = xy[0];
@@ -342,7 +300,8 @@ void MPC::updatePred(vector<double> state0) {
 }
 
 void MPC::updateRef(vector<double> x, vector<double> y,
-                    double px0, double py0, double psi) {
+                    double px0, double py0, double psi)
+{
     assert(x.size() == y.size());
 
     unsigned ref_length = x.size();
@@ -354,8 +313,7 @@ void MPC::updateRef(vector<double> x, vector<double> y,
     // transform from global coordinates system to car's coordinate system
     for (unsigned i=0; i<ref_length; ++i) {
 
-        vector<double> xy = globalToCar<vector<double>, double>(
-            x[i], y[i], px0, py0, psi);
+        vector<double> xy = globalToCar(x[i], y[i], px0, py0, psi);
 
         // store the reference trajectory in the car's coordinate system
         ref_x_[i] = xy[0];
@@ -367,7 +325,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
                 vector<double> ptsx, vector<double> ptsy)
 {
     //
-    // print input data
+    // Print input data.
     //
     cout << "time " << step_*LATENCY << "s        \r" << flush;
     trace_ << "--- step " << step_ << endl;
@@ -382,8 +340,8 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     trace_ << endl;
 
     //
-    // update the reference trajectory
-    // the reference trajectory should be calculated using the measured state
+    // Update the reference trajectory.
+    // The reference trajectory should be calculated using the measured state
     // vector since the way points and vehicle state were measured at the same
     // time prior to the current time.
     //
@@ -399,106 +357,80 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     step_++;
 
     //
-    // estimate the current status to compensate the latency
+    // Estimate the current status to compensate the latency.
     //
     vector<double> estimated_state0 = globalKinematic(state0, actuator0, LATENCY);
 
-    //
-    // set up the optimizer
-    //
-    typedef CPPAD_TESTVECTOR(double) Dvector;
+    double lower_bounds[2] = {-MAX_STEERING, -MAX_THROTTLE};
+    double upper_bounds[2] = {MAX_STEERING,  MAX_THROTTLE};
+    double actuator[2], cost, start_range, stop_range;
+    unsigned maxeval;
+
+    actuator[0] = actuator0[0];
+    actuator[1] = actuator0[1];
 
     //
-    // set variables
+    // Global optimization: use DIRECT algorithm (DIviding RECTangles),
+    // invented by Jones et al.
     //
-    Dvector xi(2), xl(2), xu(2);
-
-    // set variable boundaries
-    xl[0] = -MAX_STEERING; xu[0] = MAX_STEERING;
-    xl[1] = -MAX_THROTTLE; xu[1] = MAX_THROTTLE;
-
+    // D. R. Jones, C. D. Perttunen, and B. E. Stuckmann,
+    // "Lipschitzian optimization without the lipschitz constant,"
+    // J. Optimization Theory and Applications, vol. 79, p. 157 (1993).
     //
-    // set constraints
-    //
-    Dvector gl(1), gu(1);
+    stop_range = 1e-3;
+    maxeval    = 500;
 
-    // set constraint boundaries
-    // constraint 1: maximum absolute cte
-    gl[0] = 0.0;
-    gu[0] = 2.0;
+    neval_ = 0;
+    state0_ = estimated_state0;
+    int status = direct(obj_func, this, 2, lower_bounds, upper_bounds, actuator,
+                        &cost, maxeval, stop_range);
 
-    // object that computes objective and constraints
-    FG_eval fg_eval(estimated_state0, ref_x_, ref_y_);
+    // Print out the result.
+    trace_ << "    global status = " << status << endl;
+    trace_ << "    " << neval_ << " global evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
+    trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
-    // options for IPOPT solver
-    string options;
-
-    options += "Integer print_level  0\n";
-    // Setting sparse to true allows the solver to take advantage
-    // of sparse routines, this makes the computation MUCH FASTER.
-    options += "Sparse  true        forward\n";
-    options += "Sparse  true        reverse\n";
-    options += "Numeric max_cpu_time          0.5\n";
-
-    // structure that holds the solution of the optimization
-    CppAD::ipopt::solve_result<Dvector> solution;
-
-    // solve the problem
-    CppAD::ipopt::solve<Dvector, FG_eval>(options, xi, xl, xu, gl, gu, fg_eval, solution);
-
-    // Print out the results
-    trace_ << "    solution status: " << solution.status << endl;
-    trace_ << "    cost " << solution.obj_value << "  constraints: ";
-    for (unsigned i=0; i<solution.g.size(); ++i) {
-        trace_ << solution.g[i] << "  ";
-    }
-    trace_ << endl;
-    trace_ << "    result: ";
-    for (unsigned i=0; i<solution.x.size(); ++i) {
-        trace_ << solution.x[i] << "  ";
-    }
-    trace_ << endl;
-
-    // Check the solution status.
-    // Possible values for the result status:
-    //      0: not_defined,
-    //      1: success,
-    //      2: maxiter_exceeded,
-    //      3: stop_at_tiny_step,
-    //      4: stop_at_acceptable_point,
-    //      5: local_infeasibility,
-    //      6: user_requested_stop,
-    //      7: feasible_point_found,
-    //      8: diverging_iterates,
-    //      9: restoration_failure,
-    //      10: error_in_step_computation,
-    //      11: invalid_number_detected,
-    //      12: too_few_degrees_of_freedom,
-    //      13: internal_error,
-    //      14: unknown
-
-    if (solution.status == CppAD::ipopt::solve_result<Dvector>::success) {
-        // assign the optimized values
-        steering_ = solution.x[0];
-        throttle_ = solution.x[1];
+    if ((status == 0 || status == ERANGE) &&
+        actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
+        actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
+        // Result looks good.
     } else {
-        // Cannot find optimal control.
-        cout << "time " << step_*LATENCY << "s -- brake!\n";
+        // Cannot find optimal control: should not happen.
+        cout << "time " << step_*LATENCY << "s -- global optimizer failed!\n";
 
         // Keep same steering angle and decelerate.
-        if (state0[3] > 10)
-            throttle_ = -MAX_THROTTLE;
-        else if (state0[3] > 2)
-            throttle_ = -MAX_THROTTLE/10;
-        else
-            throttle_ = 0;
+        actuator[0] = actuator0[0];
+        actuator[1] = actuator0[1];
     }
 
-    // update the predicted trajectory
+    //
+    // Local optimization: use the compass search algorithm, as described in
+    // the review paper by Kolda, Lewis, Torczon: 'Optimization by Direct Search:
+    // New Perspectives on Some Classical and Modern Methods', published in
+    // the SIAM Journal Vol. 45, No. 3, pp. 385-482 (2003).
+    //
+    start_range = 0.1;
+    stop_range  = 1e-3; // Stopping criteria, or a relative tolerance on the optimization parameters
+    maxeval     = 10000;
+
+    neval_ = 0;
+    state0_ = estimated_state0;
+    compass(obj_func, this, 2, lower_bounds, upper_bounds, actuator,
+            &cost, &maxeval, start_range, stop_range, 0.5);
+
+    // Print out the results.
+    trace_ << "    " << neval_ << " local evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
+    trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
+
+    // Assign the optimized values.
+    steering_ = actuator[0];
+    throttle_ = actuator[1];
+
+    // Update the predicted trajectory.
     updatePred(estimated_state0);
 
     //
-    // print output data
+    // Print output data.
     //
     trace_ << "    steering = " << steering_ / MAX_STEERING <<
                 "  throttle = " << throttle_ << endl;

@@ -50,6 +50,13 @@ public:
     // pred_y getter
     vector<double> getPredy();
 
+    // Compute distance from a point to a reference trajectory
+    double distanceToRefTrajectory(double x, double y);
+
+    double evaluatePenalty(vector<double> actuator);
+
+    double getMaxCTE();
+
 private:
 
     vector<double> ref_x_;      // x coordinates of the reference trajectory
@@ -61,7 +68,11 @@ private:
     double steering_;           // constant steering angle
     double throttle_;           // constant throttle
 
+    vector<double> state0_;     // initial state for nlopt
+    double max_cte_;            // maximum cross-track error
+
     unsigned step_;             // index of computation step
+    unsigned neval_;            // number of objective function evaluations
     unsigned round_;            // round number
     unsigned last_round_;       // step index of last round
 
@@ -90,6 +101,9 @@ private:
     //
     void updateRef(vector<double> x, vector<double> y,
                    double x0, double y0, double psi);
+
+    // Check whether a point lies beyond the reference trajectory
+    int beyondTrajectory(double x, double y);
 };
 
 #endif // MPC_MPC_H

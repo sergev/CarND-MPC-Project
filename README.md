@@ -16,7 +16,7 @@ On video, you can see the algorithm running with 90mph speed limit:
 
 2. Install required packages:
 ```
-    sudo apt-get install cppad libuv1-dev libssl-dev nlohmann-json-dev
+    sudo apt-get install libuv1-dev libssl-dev nlohmann-json-dev
 ```
 
 3. Install [uWebSockets](https://github.com/uWebSockets/uWebSockets)
