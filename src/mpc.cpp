@@ -24,9 +24,6 @@
 #include <iostream>
 #include <assert.h>
 #include <math.h>
-#if 0
-#include <nlopt.h>
-#endif
 #include "mpc.h"
 #include "direct.h"
 #include "compass.h"
@@ -245,13 +242,8 @@ double obj_func(unsigned n, const double *actuator, int *not_feasible, void *arg
 {
     MPC *mpc = (MPC*) arg;
     vector<double> next_actuator { actuator[0], actuator[1] };
-    double penalty = mpc->evaluatePenalty(next_actuator);
-#if 0
-    if (not_feasible != NULL && mpc->getMaxCTE() > MAX_CTE) {
-        *not_feasible = 1;
-    }
-#endif
-    return penalty;
+
+    return mpc->evaluatePenalty(next_actuator);
 }
 
 //
@@ -275,8 +267,6 @@ double MPC::getLatency() { return LATENCY; }
 double MPC::getSteering() { return steering_ / MAX_STEERING; }
 
 double MPC::getThrottle() { return throttle_; }
-
-double MPC::getMaxCTE() { return max_cte_; }
 
 vector<double> MPC::getRefx() { return ref_x_; }
 
@@ -335,7 +325,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
                 vector<double> ptsx, vector<double> ptsy)
 {
     //
-    // print input data
+    // Print input data.
     //
     cout << "time " << step_*LATENCY << "s        \r" << flush;
     trace_ << "--- step " << step_ << endl;
@@ -350,8 +340,8 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     trace_ << endl;
 
     //
-    // update the reference trajectory
-    // the reference trajectory should be calculated using the measured state
+    // Update the reference trajectory.
+    // The reference trajectory should be calculated using the measured state
     // vector since the way points and vehicle state were measured at the same
     // time prior to the current time.
     //
@@ -367,13 +357,13 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     step_++;
 
     //
-    // estimate the current status to compensate the latency
+    // Estimate the current status to compensate the latency.
     //
     vector<double> estimated_state0 = globalKinematic(state0, actuator0, LATENCY);
 
     double lower_bounds[2] = {-MAX_STEERING, -MAX_THROTTLE};
     double upper_bounds[2] = {MAX_STEERING,  MAX_THROTTLE};
-    double actuator[2], cost;
+    double actuator[2], cost, start_range, stop_range;
     unsigned maxeval;
 
     actuator[0] = actuator0[0];
@@ -382,40 +372,15 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
     // Global optimization.
     //
-#if 0
-    nlopt_opt opt = nlopt_create(NLOPT_GN_ORIG_DIRECT, 2);
+    stop_range = 1e-3;
+    maxeval    = 500;
 
-    // Set objective function.
-    neval_ = 0;
-    nlopt_set_min_objective(opt, (nlopt_func)obj_func, this);
-
-    // Specify bounds.
-    nlopt_set_lower_bounds(opt, lower_bounds);
-    nlopt_set_upper_bounds(opt, upper_bounds);
-
-    // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    nlopt_set_xtol_rel(opt, 1e-3);
-    nlopt_set_maxeval(opt, 500);
-
-    // Perform the optimization, starting with some initial guess.
-    state0_ = estimated_state0;
-    int status;
-    switch (nlopt_optimize(opt, actuator, &cost)) {
-    case NLOPT_SUCCESS:         status = 0;         break;
-    case NLOPT_XTOL_REACHED:    status = ERANGE;    break;
-    case NLOPT_MAXEVAL_REACHED: status = EOVERFLOW; break;
-    default:                    status = EINVAL;    break;
-    }
-    nlopt_destroy(opt);
-#else
-    double minf;
-    double xtol_rel = 1e-3;
-    maxeval         = 500;
     neval_ = 0;
     state0_ = estimated_state0;
-    int status = direct(obj_func, this, 2, lower_bounds, upper_bounds,
-                        actuator, &minf, maxeval, xtol_rel);
-#endif
+    int status = direct(obj_func, this, 2, lower_bounds, upper_bounds, actuator,
+                        &cost, maxeval, stop_range);
+
+    // Print out the result.
     trace_ << "    global status = " << status << endl;
     trace_ << "    " << neval_ << " global evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
@@ -423,9 +388,9 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     if ((status == 0 || status == ERANGE) &&
         actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
         actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
-        // result looks good
+        // Result looks good.
     } else {
-        // Cannot find optimal control.
+        // Cannot find optimal control: should not happen.
         cout << "time " << step_*LATENCY << "s -- global optimizer failed!\n";
 
         // Keep same steering angle and decelerate.
@@ -436,46 +401,28 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     //
     // Local optimization.
     //
-    // Stopping criteria, or. a relative tolerance on the optimization parameters.
-    double start_range = 0.1;
-    double stop_range  = 1e-3;
-    maxeval            = 10000;
+    start_range = 0.1;
+    stop_range  = 1e-3; // Stopping criteria, or a relative tolerance on the optimization parameters
+    maxeval     = 10000;
 
     neval_ = 0;
     state0_ = estimated_state0;
-    compass(obj_func, this, 2, lower_bounds, upper_bounds, actuator, &maxeval, start_range, stop_range, 0.5);
-    status = 0;
+    compass(obj_func, this, 2, lower_bounds, upper_bounds, actuator,
+            &cost, &maxeval, start_range, stop_range, 0.5);
 
-    // Print out the results
-    //trace_ << "    local status = " << status << endl;
+    // Print out the results.
     trace_ << "    " << neval_ << " local evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
-    if ((status == 0 || status == ERANGE || status == EOVERFLOW) &&
-        actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
-        actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
-        // assign the optimized values
+    // Assign the optimized values.
+    steering_ = actuator[0];
+    throttle_ = actuator[1];
 
-        steering_ = actuator[0];
-        throttle_ = actuator[1];
-    } else {
-        // Cannot find optimal control.
-        cout << "time " << step_*LATENCY << "s -- brake!\n";
-
-        // Keep same steering angle and decelerate.
-        if (state0[3] > 10)
-            throttle_ = -MAX_THROTTLE;
-        else if (state0[3] > 2)
-            throttle_ = -MAX_THROTTLE/10;
-        else
-            throttle_ = 0;
-    }
-
-    // update the predicted trajectory
+    // Update the predicted trajectory.
     updatePred(estimated_state0);
 
     //
-    // print output data
+    // Print output data.
     //
     trace_ << "    steering = " << steering_ / MAX_STEERING <<
                 "  throttle = " << throttle_ << endl;

@@ -61,6 +61,7 @@ void compass(
     double       lb[],              // lower bounds
     double       ub[],              // upper bounds
     double       best_x[],          // starting point
+    double       *minf,             // resulting function value
     unsigned int *max_fevals,       // maximum number of fitness evaluations
     double       start_range,       // start range, say 0.1
     double       stop_range,        // stop range, like 1e-6
@@ -139,5 +140,6 @@ void compass(
     } else {
         //printf("Exit condition -- fevals: %u > %u\n", fevals, *max_fevals);
     }
+    *minf = best_f;
     *max_fevals = fevals;
 }
