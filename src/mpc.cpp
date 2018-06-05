@@ -24,9 +24,11 @@
 #include <iostream>
 #include <assert.h>
 #include <math.h>
-//#include <nlopt.h>
+#if 0
+#include <nlopt.h>
+#endif
 #include "mpc.h"
-#include "cdirect.h"
+#include "direct.h"
 #include "compass.h"
 
 const double LATENCY    = 0.1;      // latency of the data acquisition system (in seconds)
@@ -239,12 +241,17 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
 //
 // Objective function.
 //
-double obj_func(unsigned n, const double *actuator, double *grad, void *arg)
+double obj_func(unsigned n, const double *actuator, int *not_feasible, void *arg)
 {
     MPC *mpc = (MPC*) arg;
     vector<double> next_actuator { actuator[0], actuator[1] };
-
-    return mpc->evaluatePenalty(next_actuator);
+    double penalty = mpc->evaluatePenalty(next_actuator);
+#if 0
+    if (not_feasible != NULL && mpc->getMaxCTE() > MAX_CTE) {
+        *not_feasible = 1;
+    }
+#endif
+    return penalty;
 }
 
 //
@@ -268,6 +275,8 @@ double MPC::getLatency() { return LATENCY; }
 double MPC::getSteering() { return steering_ / MAX_STEERING; }
 
 double MPC::getThrottle() { return throttle_; }
+
+double MPC::getMaxCTE() { return max_cte_; }
 
 vector<double> MPC::getRefx() { return ref_x_; }
 
@@ -367,6 +376,9 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     double actuator[2], cost;
     unsigned maxeval;
 
+    actuator[0] = actuator0[0];
+    actuator[1] = actuator0[1];
+
     //
     // Global optimization.
     //
@@ -375,7 +387,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
 
     // Set objective function.
     neval_ = 0;
-    nlopt_set_min_objective(opt, obj_func, this);
+    nlopt_set_min_objective(opt, (nlopt_func)obj_func, this);
 
     // Specify bounds.
     nlopt_set_lower_bounds(opt, lower_bounds);
@@ -386,8 +398,6 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     nlopt_set_maxeval(opt, 500);
 
     // Perform the optimization, starting with some initial guess.
-    actuator[0] = actuator0[0];
-    actuator[1] = actuator0[1];
     state0_ = estimated_state0;
     int status;
     switch (nlopt_optimize(opt, actuator, &cost)) {
@@ -403,7 +413,8 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     maxeval         = 500;
     neval_ = 0;
     state0_ = estimated_state0;
-    int status = direct(2, obj_func, this, lower_bounds, upper_bounds, actuator, &minf, &maxeval, xtol_rel, 1e-4, 0);
+    int status = direct(obj_func, this, 2, lower_bounds, upper_bounds,
+                        actuator, &minf, maxeval, xtol_rel);
 #endif
     trace_ << "    global status = " << status << endl;
     trace_ << "    " << neval_ << " global evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
@@ -432,7 +443,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
 
     neval_ = 0;
     state0_ = estimated_state0;
-    compass(2, lower_bounds, upper_bounds, actuator, obj_func, &maxeval, start_range, stop_range, 0.5, this);
+    compass(obj_func, this, 2, lower_bounds, upper_bounds, actuator, &maxeval, start_range, stop_range, 0.5);
     status = 0;
 
     // Print out the results

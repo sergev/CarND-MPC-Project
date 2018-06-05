@@ -55,24 +55,24 @@
  * Continue until the search range becomes smaller than the defined stop_range.
  */
 void compass(
+    compass_func obj_func,          // objective function
+    void        *arg,               // argument for objective function
     unsigned int dim,               // dimension
     double       lb[],              // lower bounds
     double       ub[],              // upper bounds
     double       best_x[],          // starting point
-    compass_func obj_func,          // objective function
     unsigned int *max_fevals,       // maximum number of fitness evaluations
     double       start_range,       // start range, say 0.1
     double       stop_range,        // stop range, like 1e-6
-    double       reduction_coeff,   // range reduction coefficient, typically 0.5
-    void        *arg                // argument for objective function
+    double       reduction_coeff    // range reduction coefficient, typically 0.5
 ) {
     assert(start_range > 0.0 && start_range <= 1.0);
     assert(stop_range <= 1.0 && stop_range < start_range);
     assert(reduction_coeff > 0.0 && reduction_coeff < 1.0);
 
     // Get value at starting point
-    double constraint[1];
-    double best_f = obj_func(dim, best_x, constraint, arg);
+    int not_feasible = 0;
+    double best_f = obj_func(dim, best_x, &not_feasible, arg);
 
     // We need some auxiliary variables
     bool         flag     = false;
@@ -94,7 +94,7 @@ void compass(
                 x_trial[i] = ub[i];
 
             // objective function evaluation
-            double f_trial = obj_func(dim, x_trial, NULL, arg);
+            double f_trial = obj_func(dim, x_trial, &not_feasible, arg);
 
             fevals++;
             if (f_trial < best_f) {
@@ -114,7 +114,7 @@ void compass(
                 x_trial[i] = lb[i];
 
             // objective function evaluation
-            f_trial = obj_func(dim, x_trial, constraint, arg);
+            f_trial = obj_func(dim, x_trial, &not_feasible, arg);
 
             fevals++;
             if (f_trial < best_f) {

@@ -498,7 +498,7 @@ divisions:
 /***************************************************************************/
 
 /* lexographic sort order (d,f,age) of hyper-rects, for red-black tree */
-int direct_hyperrect_compare(double *a, double *b)
+static int direct_hyperrect_compare(double *a, double *b)
 {
     if (a[0] < b[0]) return -1;
     if (a[0] > b[0]) return +1;
@@ -594,7 +594,7 @@ done:
    coordinates to a unit hypercube ... we do this simply by
    wrapping direct() around direct_unscaled(). */
 
-double direct_uf(unsigned n, const double *xu, double *grad, void *d_)
+static double direct_uf(unsigned n, const double *xu, double *grad, void *d_)
 {
     direct_uf_data *d = (direct_uf_data *) d_;
     double f;
