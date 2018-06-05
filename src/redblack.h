@@ -22,8 +22,8 @@
 #include <stddef.h> /* for ptrdiff_t */
 
 typedef double *rb_key; /* key type ... double* is convenient for us,
-			   but of course this could be cast to anything
-			   desired (although void* would look more generic) */
+                           but of course this could be cast to anything
+                           desired (although void* would look more generic) */
 
 typedef enum { RED, BLACK } rb_color;
 typedef struct rb_node_s {
