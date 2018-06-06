@@ -2617,8 +2617,8 @@ int direct(
        return EINVAL;
 
     // Copy bounds to writable storage.
-    double *l = (double *) alloca(sizeof(double) * dimension * 2);
-    double *u = l + dimension;
+    double l[dimension];
+    double u[dimension];
     int i;
     for (i = 0; i < dimension; ++i) {
          l[i] = lower_bounds[i];
