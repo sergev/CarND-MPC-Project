@@ -65,8 +65,7 @@ vector<double> globalToCar(double px, double py, double px0, double py0, double 
 vector<double> globalKinematic(const vector<double> &state, const vector<double> &actuator, double dt)
 {
     // distance between the front wheel and the vehicle center
-    //const double LF = 2.67;
-    const double LF = 2.8;
+    const double LF = 2.67;
 
     // Conversion from MPH to meters per second.
     const double MPH_TO_METERS_PER_SEC = 0.44704;
@@ -96,7 +95,8 @@ vector<double> globalKinematic(const vector<double> &state, const vector<double>
 double distanceToLineSegment(
     double x,  double y,    // point C
     double x1, double y1,   // segment end A
-    double x2, double y2)   // segment end B
+    double x2, double y2,   // segment end B
+    bool is_last)           // B is last point
 {
     double dx = x2 - x1;
     double dy = y2 - y1;
@@ -114,7 +114,7 @@ double distanceToLineSegment(
 
     // Dot product BA*BC is positive, when the angle is acute.
     double dot_product_ba_bc = dx*dx2 + dy*dy2;
-    if (dot_product_ba_bc <= 0) {
+    if (!is_last && dot_product_ba_bc <= 0) {
         // Angle B is obtuse: use distance |BC|.
         return sqrt(dx2*dx2 + dy2*dy2);
     }
@@ -131,13 +131,15 @@ double MPC::distanceToRefTrajectory(double x, double y)
 {
     // Get distance to the first trajectory segment.
     double distance = distanceToLineSegment(x, y,
-        ref_x_[0], ref_y_[0], ref_x_[1], ref_y_[1]);
+        ref_x_[0], ref_y_[0], ref_x_[1], ref_y_[1], false);
 
-    for (unsigned i=2; i<ref_x_.size(); ++i) {
+    const unsigned npoints = ref_x_.size();
+    for (unsigned i=2; i<npoints; ++i) {
 
         // Distance to the next trajectory segment.
         double d = distanceToLineSegment(x, y,
-            ref_x_[i-1], ref_y_[i-1], ref_x_[i], ref_y_[i]);
+            ref_x_[i-1], ref_y_[i-1], ref_x_[i], ref_y_[i],
+            i == npoints-1);
 
         if (d < distance)
             distance = d;
@@ -145,82 +147,57 @@ double MPC::distanceToRefTrajectory(double x, double y)
     return distance;
 }
 
-//
-// Check whether a point lies beyond the reference trajectory
-//
-int MPC::beyondTrajectory(double x, double y)
-{
-    const int last = ref_x_.size() - 1;
-
-    double x1 = ref_x_[last],   y1 = ref_y_[last];      // last point A
-    double x2 = ref_x_[last-1], y2 = ref_y_[last-1];    // previous point B
-
-    // Dot product AB*AC is negative, when the angle is obtuse.
-    double dot_product_ab_ac = (x2 - x1)*(x - x1) +
-                               (y2 - y1)*(y - y1);
-    return (dot_product_ab_ac < 0);
-}
-
 double MPC::evaluatePenalty(vector<double> next_actuator)
 {
     vector<double> next_state = state0_;
-    double px0 = state0_[0];
-    double py0 = state0_[1];
-    double psi = state0_[2];
-    double v   = state0_[3];
+    double px0  = state0_[0];
+    double py0  = state0_[1];
+    double psi0 = state0_[2];
+    double v0   = state0_[3];
 
-    double penalty  = 0;
+    double penalty  = 0.0;
     double ss_speed = 0.0;   // sum of square of speed
-    double t        = 0;
+    double t        = 0.0;
 
     neval_++;
     max_cte_ = 0.0;
     for (int i=0; i<N_STEP; ++i) {
         t += PRED_TIME_STEP;
 
-        // compute the next state
+        // Compute the next state.
         next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
+        double v = next_state[3];
 
-        // transform from global coordinates system to car's coordinate system
-        vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi);
+        // Transform from global coordinates system to car's coordinate system.
+        vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi0);
 
-        if (beyondTrajectory(xy[0], xy[1])) {
-            // Predicted point is beyond the reference trajectory
-            //cout << "\nbeyond trajectory!" << endl;
-            break;
-        }
-
-        // calculate the cross track error
+        // Calculate the cross track error.
         double cte = distanceToRefTrajectory(xy[0], xy[1]);
 
         if (cte > max_cte_) {
             max_cte_ = cte;
         }
 
-        // penalty functions
+        // Accumulate penalty.
+        penalty += cte * cte;
+
         if (cte > MAX_CTE) {
             // Went off road.
-            penalty += (cte - MAX_CTE) * (cte - MAX_CTE) * 100;
+            penalty += (cte - MAX_CTE) * (cte - MAX_CTE);
         }
 
-        if (i < N_STEP-1) {
-            // Normal case.
-            penalty += cte * cte;
-        } else {
-            // Last cte costs more.
-            penalty += cte * cte * N_STEP;
+        // Don't drive backwards.
+        if (v < 0) {
+            penalty += v * v;
         }
 
-        ss_speed += next_state[3] * next_state[3];
-        if (next_state[3] < 0) {
-            // Don't drive backwards.
-            penalty += ss_speed;
-        }
+        // Accumulate speed (sum of squares).
+        ss_speed += v * v;
     }
 
-    // speed control
-    if (v < MAX_SPEED) {
-        penalty -= (MAX_SPEED - v) * 1e-4 * ss_speed;
+    // Speed control.
+    if (v0 < MAX_SPEED) {
+        penalty -= (MAX_SPEED - v0) * 2e-5 * ss_speed;
     }
 
     return penalty;
