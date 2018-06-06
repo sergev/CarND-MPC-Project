@@ -172,58 +172,49 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
     double penalty  = 0;
     double ss_speed = 0.0;   // sum of square of speed
     double t        = 0;
-    bool   off_road = false;
 
     neval_++;
     max_cte_ = 0.0;
     for (int i=0; i<N_STEP; ++i) {
         t += PRED_TIME_STEP;
 
-        if (off_road) {
-            penalty += 100;
+        // compute the next state
+        next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
+
+        // transform from global coordinates system to car's coordinate system
+        vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi);
+
+        if (beyondTrajectory(xy[0], xy[1])) {
+            // Predicted point is beyond the reference trajectory
+            //cout << "\nbeyond trajectory!" << endl;
+            break;
+        }
+
+        // calculate the cross track error
+        double cte = distanceToRefTrajectory(xy[0], xy[1]);
+
+        if (cte > max_cte_) {
+            max_cte_ = cte;
+        }
+
+        // penalty functions
+        if (cte > MAX_CTE) {
+            // Went off road.
+            penalty += (cte - MAX_CTE) * (cte - MAX_CTE) * 100;
+        }
+
+        if (i < N_STEP-1) {
+            // Normal case.
+            penalty += cte * cte;
         } else {
-            // compute the next state
-            next_state = globalKinematic(next_state, next_actuator, PRED_TIME_STEP);
+            // Last cte costs more.
+            penalty += cte * cte * N_STEP;
+        }
 
-            // transform from global coordinates system to car's coordinate system
-            vector<double> xy = globalToCar(next_state[0], next_state[1], px0, py0, psi);
-
-            if (beyondTrajectory(xy[0], xy[1])) {
-                // Predicted point is beyond the reference trajectory
-                //cout << "\nbeyond trajectory!" << endl;
-                break;
-            }
-
-            // calculate the cross track error
-            double cte = distanceToRefTrajectory(xy[0], xy[1]);
-
-            if (cte > max_cte_) {
-                max_cte_ = cte;
-            }
-
-            // penalty functions
-            if (cte > MAX_CTE) {
-                // Went off road.
-                penalty += cte * cte * 100;
-
-                if (!off_road) {
-                    off_road = true;
-                    next_actuator[0] = 0;
-                    next_actuator[1] = 0;
-                }
-            } else if (i < N_STEP-1) {
-                // Normal case.
-                penalty += cte * cte;
-            } else {
-                // Last cte costs more.
-                penalty += cte * cte * N_STEP;
-            }
-
-            ss_speed += next_state[3] * next_state[3];
-            if (next_state[3] < 0) {
-                // Don't drive backwards.
-                penalty += ss_speed;
-            }
+        ss_speed += next_state[3] * next_state[3];
+        if (next_state[3] < 0) {
+            // Don't drive backwards.
+            penalty += ss_speed;
         }
     }
 
@@ -378,7 +369,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     // J. Optimization Theory and Applications, vol. 79, p. 157 (1993).
     //
     stop_range = 1e-3;
-    maxeval    = 500;
+    maxeval    = 1000;
 
     neval_ = 0;
     state0_ = estimated_state0;
@@ -390,17 +381,9 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     trace_ << "    " << neval_ << " global evals, cost = " << cost << "  max_cte = " << max_cte_ << endl;
     trace_ << "    result = " << actuator[0] << "  " << actuator[1] << endl;
 
-    if ((status == 0 || status == ERANGE) &&
-        actuator[0] >= -MAX_STEERING && actuator[0] <= MAX_STEERING &&
-        actuator[1] >= -MAX_THROTTLE && actuator[1] <= MAX_THROTTLE) {
-        // Result looks good.
-    } else {
-        // Cannot find optimal control: should not happen.
-        cout << "time " << step_*LATENCY << "s -- global optimizer failed!\n";
-
-        // Keep same steering angle and decelerate.
-        actuator[0] = actuator0[0];
-        actuator[1] = actuator0[1];
+    if (actuator[0] < -MAX_STEERING || actuator[0] > MAX_STEERING ||
+        actuator[1] < -MAX_THROTTLE || actuator[1] > MAX_THROTTLE) {
+        cout << "time " << step_*LATENCY << "s -- global optimizer went off-road!\n";
     }
 
     //
