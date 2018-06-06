@@ -324,11 +324,6 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     }
     step_++;
 
-    //
-    // Estimate the current status to compensate the latency.
-    //
-    vector<double> estimated_state0 = globalKinematic(state0, actuator0, LATENCY);
-
     double lower_bounds[2] = {-MAX_STEERING, -MAX_THROTTLE};
     double upper_bounds[2] = {MAX_STEERING,  MAX_THROTTLE};
     double actuator[2], cost, start_range, stop_range;
@@ -336,6 +331,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
 
     actuator[0] = actuator0[0];
     actuator[1] = actuator0[1];
+    state0_ = state0;
 
     //
     // Global optimization: use DIRECT algorithm (DIviding RECTangles),
@@ -349,7 +345,6 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     maxeval    = 1000;
 
     neval_ = 0;
-    state0_ = estimated_state0;
     int status = direct(obj_func, this, 2, lower_bounds, upper_bounds, actuator,
                         &cost, maxeval, stop_range);
 
@@ -374,7 +369,6 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     maxeval     = 10000;
 
     neval_ = 0;
-    state0_ = estimated_state0;
     compass(obj_func, this, 2, lower_bounds, upper_bounds, actuator,
             &cost, &maxeval, start_range, stop_range, 0.5);
 
@@ -387,7 +381,7 @@ void MPC::solve(vector<double> state0, vector<double> actuator0,
     throttle_ = actuator[1];
 
     // Update the predicted trajectory.
-    updatePred(estimated_state0);
+    updatePred(state0);
 
     //
     // Print output data.
