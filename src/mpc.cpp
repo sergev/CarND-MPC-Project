@@ -197,7 +197,7 @@ double MPC::evaluatePenalty(vector<double> next_actuator)
 
     // Speed control.
     if (v0 < MAX_SPEED) {
-        penalty -= (MAX_SPEED - v0) * 2e-5 * ss_speed;
+        penalty -= (MAX_SPEED - v0) * 4e-5 * ss_speed;
     }
 
     return penalty;
